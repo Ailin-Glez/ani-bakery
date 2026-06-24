@@ -18,7 +18,7 @@ type ReviewTab = 'pending' | 'approved'
 
 export default function Admin() {
   const { t } = useTranslation()
-  const [authed, setAuthed] = useState(false)
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin-authed') === '1')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
@@ -36,7 +36,7 @@ export default function Admin() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
-    if (password === ADMIN_PASSWORD) { setAuthed(true); setError('') }
+    if (password === ADMIN_PASSWORD) { sessionStorage.setItem('admin-authed', '1'); setAuthed(true); setError('') }
     else setError(t('admin.wrongPassword'))
   }
 
@@ -129,7 +129,7 @@ export default function Admin() {
         </div>
         <div className="flex items-center gap-4">
           <a href="/" className="text-sm text-brown-mid hover:text-brown-dark">{t('admin.viewStore')}</a>
-          <button onClick={() => setAuthed(false)} className="flex items-center gap-2 text-sm text-wine hover:text-brown-dark transition-colors">
+          <button onClick={() => { sessionStorage.removeItem('admin-authed'); setAuthed(false) }} className="flex items-center gap-2 text-sm text-wine hover:text-brown-dark transition-colors">
             <LogOut size={16} /> {t('admin.logout')}
           </button>
         </div>
@@ -365,26 +365,32 @@ export default function Admin() {
                     <p className="text-lg">{t('admin.noPendingReviews')}</p>
                   </div>
                 ) : pendingReviews.map(review => (
-                  <div key={review.id} className="bg-cream-light rounded-2xl border-2 border-rose p-6 shadow-sm">
-                    <div className="flex items-start justify-between gap-4 mb-3">
-                      <div>
-                        <p className="font-bold text-brown-dark text-lg">{review.name}</p>
-                        <div className="flex gap-0.5 mt-1">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star key={i} size={14} className={i < review.rating ? 'text-wine fill-wine' : 'text-rose'} />
-                          ))}
+                  <div key={review.id} className="bg-cream-light rounded-2xl border-2 border-rose shadow-sm overflow-hidden">
+                    {/* Photo full-width if present */}
+                    {review.image && (
+                      <img src={review.image} alt="review" className="w-full max-h-72 object-cover border-b border-rose" />
+                    )}
+                    <div className="p-6">
+                      <div className="flex items-start justify-between gap-4 mb-2">
+                        <div>
+                          <p className="font-bold text-brown-dark text-lg">{review.name}</p>
+                          <div className="flex gap-0.5 mt-1">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <Star key={i} size={14} className={i < review.rating ? 'text-wine fill-wine' : 'text-rose'} />
+                            ))}
+                          </div>
                         </div>
+                        <span className="text-xs text-brown-light flex-shrink-0">{review.date}</span>
                       </div>
-                      <span className="text-xs text-brown-light flex-shrink-0">{review.date}</span>
-                    </div>
-                    <p className="text-brown-mid italic mb-4">"{review.comment}"</p>
-                    <div className="flex gap-3">
-                      <button onClick={() => approveReview(review.id)} className="flex items-center gap-2 bg-green-100 hover:bg-green-200 text-green-700 font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
-                        <Check size={16} /> {t('admin.approve')}
-                      </button>
-                      <button onClick={() => rejectReview(review.id)} className="flex items-center gap-2 bg-rose-light hover:bg-rose text-wine font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
-                        <Ban size={16} /> {t('admin.reject')}
-                      </button>
+                      <p className="text-brown-mid italic mb-5">"{review.comment}"</p>
+                      <div className="flex gap-3">
+                        <button onClick={() => approveReview(review.id)} className="flex items-center gap-2 bg-green-100 hover:bg-green-200 text-green-700 font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+                          <Check size={16} /> {t('admin.approve')}
+                        </button>
+                        <button onClick={() => rejectReview(review.id)} className="flex items-center gap-2 bg-rose-light hover:bg-rose text-wine font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+                          <Ban size={16} /> {t('admin.reject')}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -397,22 +403,27 @@ export default function Admin() {
                     <p className="text-lg">{t('admin.noApprovedReviews')}</p>
                   </div>
                 ) : approvedReviews.map(review => (
-                  <div key={review.id} className="bg-cream-light rounded-2xl border border-rose p-6 shadow-sm flex gap-4 items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="font-bold text-brown-dark">{review.name}</p>
-                        <span className="text-xs text-brown-light">{review.date}</span>
+                  <div key={review.id} className="bg-cream-light rounded-2xl border border-rose shadow-sm overflow-hidden">
+                    <div className="flex gap-4 items-start p-6">
+                      {review.image && (
+                        <img src={review.image} alt="review" className="w-24 h-24 object-cover rounded-xl border border-rose flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1 gap-2">
+                          <p className="font-bold text-brown-dark truncate">{review.name}</p>
+                          <span className="text-xs text-brown-light flex-shrink-0">{review.date}</span>
+                        </div>
+                        <div className="flex gap-0.5 mb-2">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star key={i} size={13} className={i < review.rating ? 'text-wine fill-wine' : 'text-rose'} />
+                          ))}
+                        </div>
+                        <p className="text-brown-mid text-sm italic">"{review.comment}"</p>
                       </div>
-                      <div className="flex gap-0.5 mb-2">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} size={13} className={i < review.rating ? 'text-wine fill-wine' : 'text-rose'} />
-                        ))}
-                      </div>
-                      <p className="text-brown-mid text-sm italic">"{review.comment}"</p>
+                      <button onClick={() => { if (confirm(t('admin.deleteReview') + '?')) deleteReview(review.id) }} className="text-wine/50 hover:text-wine flex-shrink-0 p-1">
+                        <Trash2 size={16} />
+                      </button>
                     </div>
-                    <button onClick={() => { if (confirm(t('admin.deleteReview') + '?')) deleteReview(review.id) }} className="text-wine/50 hover:text-wine flex-shrink-0 p-1">
-                      <Trash2 size={16} />
-                    </button>
                   </div>
                 ))}
               </div>

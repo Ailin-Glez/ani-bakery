@@ -58,6 +58,8 @@
     "formRating": "Rating",
     "formComment": "Your review",
     "formCommentPlaceholder": "How was your experience? What did you order?",
+    "formPhoto": "Add a photo (optional)",
+    "formPhotoBtn": "Choose photo",
     "formSubmit": "Submit review",
     "formSuccess": "Thank you for your review! I'll check it and post it soon. 🥰",
     "empty": "Be the first to leave a review!",

@@ -58,6 +58,8 @@
     "formRating": "Calificación",
     "formComment": "Tu reseña",
     "formCommentPlaceholder": "¿Cómo fue tu experiencia? ¿Qué pediste?",
+    "formPhoto": "Agrega una foto (opcional)",
+    "formPhotoBtn": "Elegir foto",
     "formSubmit": "Enviar reseña",
     "formSuccess": "¡Gracias por tu reseña! La revisaré y la publicaré pronto. 🥰",
     "empty": "¡Sé la primera persona en dejar una reseña!",

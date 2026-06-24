@@ -1,18 +1,37 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu, X } from 'lucide-react'
 
 export default function Navbar() {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [active, setActive] = useState('inicio')
 
   const links = [
-    { label: t('nav.home'), href: '#inicio' },
-    { label: t('nav.products'), href: '#productos' },
-    { label: t('nav.orders'), href: '#encargos' },
-    { label: t('nav.reviews'), href: '#resenas' },
-    { label: t('nav.contact'), href: '#contacto' },
+    { label: t('nav.home'), href: '#inicio', id: 'inicio' },
+    { label: t('nav.products'), href: '#productos', id: 'productos' },
+    { label: t('nav.orders'), href: '#encargos', id: 'encargos' },
+    { label: t('nav.reviews'), href: '#resenas', id: 'resenas' },
+    { label: t('nav.contact'), href: '#contacto', id: 'contacto' },
   ]
+
+  useEffect(() => {
+    const sections = links.map(l => document.getElementById(l.id)).filter(Boolean) as HTMLElement[]
+    const observer = new IntersectionObserver(
+      entries => {
+        const visible = entries.filter(e => e.isIntersecting)
+        if (visible.length > 0) {
+          const topmost = visible.reduce((a, b) =>
+            a.boundingClientRect.top < b.boundingClientRect.top ? a : b
+          )
+          setActive(topmost.target.id)
+        }
+      },
+      { rootMargin: '-20% 0px -60% 0px', threshold: 0 }
+    )
+    sections.forEach(s => observer.observe(s))
+    return () => observer.disconnect()
+  }, [])
 
   const toggleLang = () => {
     const next = i18n.language === 'es' ? 'en' : 'es'
@@ -33,7 +52,14 @@ export default function Navbar() {
         <ul className="hidden md:flex gap-6 items-center">
           {links.map(l => (
             <li key={l.href}>
-              <a href={l.href} className="text-brown-mid hover:text-wine transition-colors font-medium">
+              <a
+                href={l.href}
+                className={`transition-colors font-medium relative pb-0.5 ${
+                  active === l.id
+                    ? 'text-wine after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-wine after:rounded-full'
+                    : 'text-brown-mid hover:text-wine'
+                }`}
+              >
                 {l.label}
               </a>
             </li>
@@ -76,7 +102,7 @@ export default function Navbar() {
               <li key={l.href}>
                 <a
                   href={l.href}
-                  className="text-brown-mid hover:text-wine transition-colors font-medium block"
+                  className={`transition-colors font-medium block ${active === l.id ? 'text-wine' : 'text-brown-mid hover:text-wine'}`}
                   onClick={() => setOpen(false)}
                 >
                   {l.label}

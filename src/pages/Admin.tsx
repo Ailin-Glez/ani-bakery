@@ -1,7 +1,5 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
-import { storage } from '../lib/firebase'
 import { useProducts } from '../context/ProductContext'
 import { useReviews } from '../context/ReviewContext'
 import type { Product } from '../types'
@@ -28,7 +26,6 @@ export default function Admin() {
   const [adding, setAdding] = useState(false)
   const [formData, setFormData] = useState<Omit<Product, 'id'>>(EMPTY_PRODUCT)
   const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct } = useProducts()
@@ -56,23 +53,34 @@ export default function Admin() {
     else setFormData(prev => ({ ...prev, [name]: name === 'price' ? Number(value) : value }))
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-    setUploadProgress(0)
-    const storageRef = ref(storage, `products/${Date.now()}-${file.name}`)
-    const task = uploadBytesResumable(storageRef, file)
-    task.on(
-      'state_changed',
-      snap => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-      () => setUploading(false),
-      async () => {
-        const url = await getDownloadURL(task.snapshot.ref)
-        setFormData(prev => ({ ...prev, image: url }))
-        setUploading(false)
+    try {
+      const base64 = await compressImage(file)
+      setFormData(prev => ({ ...prev, image: base64 }))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function compressImage(file: File, maxPx = 900, quality = 0.78): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
       }
-    )
+      img.onerror = reject
+      img.src = url
+    })
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -235,7 +243,7 @@ export default function Admin() {
                             className="h-24 w-24 flex-shrink-0 border-2 border-dashed border-rose rounded-xl flex flex-col items-center justify-center gap-1 text-brown-light hover:border-wine hover:text-wine transition-colors disabled:opacity-50"
                           >
                             {uploading ? <Loader2 size={20} className="animate-spin" /> : <ImagePlus size={20} />}
-                            <span className="text-xs">{uploading ? `${uploadProgress}%` : t('admin.fieldImageUpload')}</span>
+                            <span className="text-xs">{uploading ? '...' : t('admin.fieldImageUpload')}</span>
                           </button>
                         )}
                         <div className="flex-1">
@@ -261,7 +269,7 @@ export default function Admin() {
                       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                       {uploading && (
                         <div className="mt-2 h-1.5 bg-rose rounded-full overflow-hidden">
-                          <div className="h-full bg-wine transition-all duration-300 rounded-full" style={{ width: `${uploadProgress}%` }} />
+                          <div className="h-full bg-wine animate-pulse rounded-full w-full" />
                         </div>
                       )}
                     </div>

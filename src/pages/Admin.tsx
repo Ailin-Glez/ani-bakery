@@ -7,7 +7,7 @@ import { useReviews } from '../context/ReviewContext'
 import type { Product } from '../types'
 import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2 } from 'lucide-react'
 
-const ADMIN_PASSWORD = 'anisbakery2025'
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
 const EMPTY_PRODUCT: Omit<Product, 'id'> = {
   name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', available: true,

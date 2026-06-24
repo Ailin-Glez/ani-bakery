@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu, X } from 'lucide-react'
 
-export default function Navbar() {
+interface Props {
+  onOrderClick: () => void
+}
+
+export default function Navbar({ onOrderClick }: Props) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState('inicio')
@@ -10,7 +14,6 @@ export default function Navbar() {
   const links = [
     { label: t('nav.home'), href: '#inicio', id: 'inicio' },
     { label: t('nav.products'), href: '#productos', id: 'productos' },
-    { label: t('nav.orders'), href: '#encargos', id: 'encargos' },
     { label: t('nav.reviews'), href: '#resenas', id: 'resenas' },
     { label: t('nav.contact'), href: '#contacto', id: 'contacto' },
   ]
@@ -37,6 +40,11 @@ export default function Navbar() {
     const next = i18n.language === 'es' ? 'en' : 'es'
     i18n.changeLanguage(next)
     localStorage.setItem('anis-lang', next)
+  }
+
+  const handleOrder = () => {
+    setOpen(false)
+    onOrderClick()
   }
 
   return (
@@ -74,11 +82,6 @@ export default function Navbar() {
               {i18n.language === 'es' ? 'EN' : 'ES'}
             </button>
           </li>
-          <li>
-            <a href="#encargos" className="btn-primary text-sm py-2 px-5">
-              {t('nav.cta')}
-            </a>
-          </li>
         </ul>
 
         <div className="md:hidden flex items-center gap-3">
@@ -109,11 +112,6 @@ export default function Navbar() {
                 </a>
               </li>
             ))}
-            <li>
-              <a href="#encargos" className="btn-primary text-sm py-2 px-5" onClick={() => setOpen(false)}>
-                {t('nav.cta')}
-              </a>
-            </li>
           </ul>
         </div>
       )}

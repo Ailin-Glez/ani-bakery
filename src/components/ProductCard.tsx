@@ -3,18 +3,14 @@ import type { Product } from '../types'
 
 interface Props {
   product: Product
+  onOrderClick: (productName: string) => void
 }
 
-export default function ProductCard({ product }: Props) {
+export default function ProductCard({ product, onOrderClick }: Props) {
   const { t, i18n } = useTranslation()
   const isEn = i18n.language === 'en'
   const name = (isEn && product.nameEn) ? product.nameEn : product.name
   const description = (isEn && product.descriptionEn) ? product.descriptionEn : product.description
-
-  const whatsappMessage = encodeURIComponent(
-    `Hola Ani! Me interesa encargar: ${product.name} 🍞`
-  )
-  const whatsappUrl = `https://wa.me/8643465333?text=${whatsappMessage}`
 
   return (
     <div className="bg-cream-light rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 flex flex-col">
@@ -44,14 +40,12 @@ export default function ProductCard({ product }: Props) {
         <div className="flex items-center justify-between mt-auto pt-3 border-t border-rose">
           <span className="text-2xl font-bold text-wine">${product.price}</span>
           {product.available ? (
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary text-sm py-2 px-4"
+            <button
+              onClick={() => onOrderClick(product.name)}
+              className="btn-primary btn-burgundy text-sm py-2 px-4"
             >
               {t('products.orderBtn')}
-            </a>
+            </button>
           ) : (
             <span className="text-brown-mid text-sm">{t('products.unavailable')}</span>
           )}

@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Star, Camera, X } from 'lucide-react'
+import { Star, Camera, X, ZoomIn } from 'lucide-react'
 import { useReviews } from '../context/ReviewContext'
+import type { Review } from '../context/ReviewContext'
 
 function StarRating({ rating, interactive = false, onChange }: {
   rating: number
@@ -54,10 +55,44 @@ function compressImage(file: File, maxPx = 900, quality = 0.72): Promise<string>
   })
 }
 
+function PhotoLightbox({ review, onClose }: { review: Review; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-brown-dark/80 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-cream-light rounded-2xl overflow-hidden max-w-lg w-full shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <img src={review.image} alt={review.name} className="w-full max-h-96 object-cover" />
+        <div className="p-6">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div>
+              <p className="font-bold text-brown-dark text-lg">{review.name}</p>
+              <div className="flex gap-0.5 mt-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star key={i} size={14} className={i < review.rating ? 'text-wine fill-wine' : 'text-rose'} />
+                ))}
+              </div>
+            </div>
+            <button onClick={onClose} className="text-brown-mid hover:text-brown-dark p-1 flex-shrink-0">
+              <X size={20} />
+            </button>
+          </div>
+          <p className="text-brown-mid italic leading-relaxed">"{review.comment}"</p>
+          <p className="text-xs text-brown-light mt-3">{review.date}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Reviews() {
   const { t } = useTranslation()
   const { approvedReviews, submitReview } = useReviews()
 
+  const [lightbox, setLightbox] = useState<Review | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [rating, setRating] = useState(0)
@@ -101,23 +136,28 @@ export default function Reviews() {
         <h2 className="section-title">{t('reviews.title')}</h2>
         <p className="section-subtitle">{t('reviews.subtitle')}</p>
 
+        {lightbox && <PhotoLightbox review={lightbox} onClose={() => setLightbox(null)} />}
+
         {approvedReviews.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
             {approvedReviews.map(review => (
               <div key={review.id} className="bg-cream-light rounded-2xl overflow-hidden shadow-md flex flex-col border border-rose">
-                {/* Fixed-height photo zone — always present for visual consistency */}
-                <div className="w-full h-44 flex-shrink-0 overflow-hidden">
-                  {review.image
-                    ? <img src={review.image} alt={review.name} className="w-full h-full object-cover" />
-                    : <div className="w-full h-full bg-rose-light flex items-center justify-center text-4xl select-none">🧁</div>
-                  }
-                </div>
                 <div className="p-6 flex flex-col gap-3 flex-1">
                   <StarRating rating={review.rating} />
                   <p className="text-brown-mid leading-relaxed italic flex-1 line-clamp-4">"{review.comment}"</p>
                   <div className="flex items-center justify-between pt-3 border-t border-rose mt-auto">
                     <span className="font-bold text-brown-dark">{review.name}</span>
-                    <span className="text-sm text-brown-mid">{review.date}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-brown-mid">{review.date}</span>
+                      {review.image && (
+                        <button
+                          onClick={() => setLightbox(review)}
+                          className="flex items-center gap-1 text-xs text-wine hover:text-wine-dark font-semibold transition-colors"
+                        >
+                          <ZoomIn size={13} /> {t('reviews.seeMore')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

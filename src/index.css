@@ -58,11 +58,38 @@
     background-color: #6B7A50;
     color: #FFFCFA;
   }
+  .btn-secondary.btn-burgundy:hover {
+    background-color: #B04545;
+    border-color: #B04545;
+    color: #FFFCFA;
+  }
+  .btn-primary.btn-burgundy:hover {
+    background-color: #B04545;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
 
   .section-title {
     @apply text-3xl md:text-4xl font-bold text-brown-dark text-center mb-2;
   }
   .section-subtitle {
     @apply text-brown-mid text-center mb-10 text-lg;
+  }
+}
+
+@layer utilities {
+  @keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  @keyframes fadeSlideUp {
+    from { transform: translateY(8px); opacity: 0; }
+    to   { transform: translateY(0);   opacity: 1; }
+  }
+  @keyframes nudge {
+    0%, 100% { transform: rotate(0deg); }
+    20%       { transform: rotate(-12deg); }
+    40%       { transform: rotate(10deg); }
+    60%       { transform: rotate(-6deg); }
+    75%       { transform: rotate(4deg); }
   }
 }

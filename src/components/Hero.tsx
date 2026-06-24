@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-export default function Hero() {
+export default function Hero({ onOrderClick }: { onOrderClick: () => void }) {
   const { t } = useTranslation()
 
   return (
@@ -28,9 +28,9 @@ export default function Hero() {
           <a href="#productos" className="btn-primary text-lg py-4 px-8">
             {t('hero.btnProducts')}
           </a>
-          <a href="#encargos" className="btn-secondary text-lg py-4 px-8">
+          <button onClick={onOrderClick} className="btn-secondary btn-burgundy text-lg py-4 px-8">
             {t('hero.btnOrder')}
-          </a>
+          </button>
         </div>
 
         <div className="flex gap-8 mt-6 text-center">

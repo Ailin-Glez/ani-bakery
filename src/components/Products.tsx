@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useProducts } from '../context/ProductContext'
 import ProductCard from './ProductCard'
 
-export default function Products() {
+export default function Products({ onOrderClick }: { onOrderClick: (productName: string) => void }) {
   const { t } = useTranslation()
   const { products } = useProducts()
   const [activeCategory, setActiveCategory] = useState('all')
@@ -53,7 +53,7 @@ export default function Products() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map(product => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard key={product.id} product={product} onOrderClick={onOrderClick} />
             ))}
           </div>
         )}

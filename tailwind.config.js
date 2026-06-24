@@ -11,6 +11,8 @@ export default {
         'brown-light': '#8B6060',
         wine: '#6B7A50',
         'wine-dark': '#4E5C3A',
+        burgundy: '#B04545',
+        'burgundy-dark': '#8C3333',
         rose: '#C8D4B0',
         'rose-light': '#EBF0E2',
         beige: '#C4CDB0',

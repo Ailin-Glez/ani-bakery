@@ -23,7 +23,7 @@ export default function Home() {
 
   return (
     <>
-      <Navbar onOrderClick={() => openChat()} />
+      <Navbar />
       <main>
         <Hero onOrderClick={() => openChat()} />
         <Products onOrderClick={openChat} />

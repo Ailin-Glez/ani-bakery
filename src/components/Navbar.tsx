@@ -2,11 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu, X } from 'lucide-react'
 
-interface Props {
-  onOrderClick: () => void
-}
-
-export default function Navbar({ onOrderClick }: Props) {
+export default function Navbar() {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState('inicio')
@@ -40,11 +36,6 @@ export default function Navbar({ onOrderClick }: Props) {
     const next = i18n.language === 'es' ? 'en' : 'es'
     i18n.changeLanguage(next)
     localStorage.setItem('anis-lang', next)
-  }
-
-  const handleOrder = () => {
-    setOpen(false)
-    onOrderClick()
   }
 
   return (

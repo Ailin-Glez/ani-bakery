@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Raleway:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: #FDF8F5;
+    color: #2D1B1B;
+    font-family: 'Raleway', ui-sans-serif, system-ui, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'DM Serif Display', Georgia, serif;
+  }
+  #root {
+    width: 100%;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    display: inline-block;
+    cursor: pointer;
+    background-color: #6B7A50;
+    color: #FFFCFA;
+    padding: 0.75rem 1.75rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    transition: all 0.3s;
+  }
+  .btn-primary:hover {
+    background-color: #4E5C3A;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
+
+  .btn-secondary {
+    display: inline-block;
+    cursor: pointer;
+    background-color: transparent;
+    color: #6B7A50;
+    border: 1px solid #6B7A50;
+    padding: 0.75rem 1.75rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    transition: all 0.3s;
+  }
+  .btn-secondary:hover {
+    background-color: #6B7A50;
+    color: #FFFCFA;
+  }
+
+  .section-title {
+    @apply text-3xl md:text-4xl font-bold text-brown-dark text-center mb-2;
+  }
+  .section-subtitle {
+    @apply text-brown-mid text-center mb-10 text-lg;
+  }
+}

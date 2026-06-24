@@ -14,9 +14,8 @@ interface ProductContextType {
   deleteProduct: (id: string) => Promise<void>
 }
 
-const SEED_PRODUCTS: Product[] = [
+const SEED_PRODUCTS: Omit<Product, 'id'>[] = [
   {
-    id: 'seed-1',
     name: 'Pan Artesanal',
     nameEn: 'Artisan Bread',
     description: 'Pan horneado al momento con harina de trigo, masa madre y un toque de sal marina. Crujiente por fuera, suave por dentro.',
@@ -43,10 +42,17 @@ export function ProductProvider({ children }: { children: ReactNode }) {
     try {
       const q = query(collection(db, 'products'), orderBy('createdAt', 'asc'))
       const snap = await getDocs(q)
-      const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Product)
-      setProducts(fetched.length > 0 ? fetched : SEED_PRODUCTS)
-    } catch {
-      setProducts(SEED_PRODUCTS)
+      if (snap.empty) {
+        // Seed initial products into Firestore so they get real IDs
+        const seeded = await Promise.all(
+          SEED_PRODUCTS.map(p => addDoc(collection(db, 'products'), { ...p, createdAt: serverTimestamp() }))
+        )
+        setProducts(SEED_PRODUCTS.map((p, i) => ({ ...p, id: seeded[i].id })))
+      } else {
+        setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Product))
+      }
+    } catch (e) {
+      console.error('Firebase fetch error:', e)
     } finally {
       setLoading(false)
     }

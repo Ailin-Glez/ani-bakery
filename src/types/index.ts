@@ -26,3 +26,21 @@ export interface OrderFormData {
   date: string
   notes: string
 }
+
+export type SaleStatus = 'pending' | 'completed' | 'cancelled'
+export type SaleSource = 'web' | 'manual'
+
+export interface Sale {
+  id: string
+  customerName: string
+  phone: string
+  productName: string
+  quantity: number
+  unitPrice: number
+  total: number
+  date: string
+  notes: string
+  status: SaleStatus
+  source: SaleSource
+  createdAt: string
+}

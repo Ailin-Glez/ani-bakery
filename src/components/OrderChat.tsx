@@ -1,18 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, ShoppingBag, ChevronRight, ChevronLeft, Send } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
+import { useSales } from '../context/SalesContext'
+import { business, buildWhatsAppOrderLink, buildOrderMessage, isOrderDateValid } from '../config/business'
 
 interface FormData {
   name: string
   phone: string
   product: string
+  productEn: string
   quantity: number
   date: string
   notes: string
 }
 
-const EMPTY: FormData = { name: '', phone: '', product: '', quantity: 1, date: '', notes: '' }
+const EMPTY: FormData = { name: '', phone: '', product: '', productEn: '', quantity: 1, date: '', notes: '' }
 
 const STEPS = ['product', 'details', 'confirm'] as const
 type Step = typeof STEPS[number]
@@ -34,7 +37,7 @@ function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?
   if (!visible) return null
   return (
     <div className="flex items-end gap-2 animate-[fadeSlideUp_0.3s_ease]">
-      <img src="/ana-logo.jpeg" alt="Ani" className="w-8 h-8 rounded-full object-cover flex-shrink-0 mb-0.5" />
+      <img src={business.logo} alt="Ani" className="w-8 h-8 rounded-full object-cover flex-shrink-0 mb-0.5" />
       <div className="bg-cream-light rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm max-w-[85%] text-brown-dark text-sm leading-relaxed">
         {children}
       </div>
@@ -45,9 +48,11 @@ function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?
 export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const { t, i18n } = useTranslation()
   const { products } = useProducts()
+  const { addSale } = useSales()
   const [step, setStep] = useState<Step>('product')
   const [form, setForm] = useState<FormData>(EMPTY)
   const [sent, setSent] = useState(false)
+  const dateInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open && initialProduct) {
@@ -64,16 +69,30 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
+    if (name === 'date') {
+      dateInputRef.current?.setCustomValidity(value && !isOrderDateValid(value) ? t('orders.dateError') : '')
+      e.target.reportValidity()
+    }
     setForm(prev => ({ ...prev, [name]: name === 'quantity' ? Number(value) : value }))
   }
 
   const sendWhatsApp = () => {
-    const message = encodeURIComponent(
-      isEn
-        ? `Hi Ani! I'd like to place an order 🎉\n\n👤 Name: ${form.name}\n📱 Phone: ${form.phone}\n🍞 Product: ${form.product}\n🔢 Quantity: ${form.quantity}\n📅 Desired date: ${form.date}\n${form.notes ? `📝 Notes: ${form.notes}\n` : ''}\nThank you!`
-        : `¡Hola Ani! Quiero hacer un encargo 🎉\n\n👤 Nombre: ${form.name}\n📱 Teléfono: ${form.phone}\n🍞 Producto: ${form.product}\n🔢 Cantidad: ${form.quantity}\n📅 Fecha deseada: ${form.date}\n${form.notes ? `📝 Notas: ${form.notes}\n` : ''}\n¡Gracias!`
-    )
-    window.open(`https://wa.me/8643465333?text=${message}`, '_blank')
+    const product = isEn && form.productEn ? form.productEn : form.product
+    const message = buildOrderMessage({ ...form, product }, isEn)
+    window.open(buildWhatsAppOrderLink(message), '_blank')
+    const matchedProduct = products.find(p => p.name === form.product)
+    addSale({
+      customerName: form.name,
+      phone: form.phone,
+      productName: form.product,
+      quantity: form.quantity,
+      unitPrice: matchedProduct?.price ?? 0,
+      total: (matchedProduct?.price ?? 0) * form.quantity,
+      date: form.date,
+      notes: form.notes,
+      status: 'pending',
+      source: 'web',
+    })
     setSent(true)
   }
 
@@ -82,7 +101,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const canGoNext = step === 'product'
     ? !!form.product
     : step === 'details'
-    ? !!form.name && !!form.phone && !!form.date && !!form.product
+    ? !!form.name && !!form.phone && !!form.product && isOrderDateValid(form.date)
     : true
 
   if (!open) return null
@@ -98,11 +117,11 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         {/* Chat header */}
         <div className="bg-wine px-5 py-4 flex items-center gap-3 flex-shrink-0">
           <div className="relative">
-            <img src="/ana-logo.jpeg" alt="Ani's Bakery" className="w-11 h-11 rounded-full object-cover border-2 border-white/30" />
+            <img src={business.logo} alt="Ani's Artisan Bakery" className="w-11 h-11 rounded-full object-cover border-2 border-white/30" />
             <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-wine" />
           </div>
           <div className="flex-1">
-            <p className="text-cream-light font-bold text-base leading-tight">Ani's Bakery</p>
+            <p className="text-cream-light font-bold text-base leading-tight">Ani's Artisan Bakery</p>
             <p className="text-white/70 text-xs">{isEn ? 'Usually replies in minutes' : 'Responde en minutos'}</p>
           </div>
           <button onClick={close} className="text-white/70 hover:text-white transition-colors p-1">
@@ -142,7 +161,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                 {availableProducts.map(p => (
                   <button
                     key={p.id}
-                    onClick={() => setForm(prev => ({ ...prev, product: p.name }))}
+                    onClick={() => setForm(prev => ({ ...prev, product: p.name, productEn: p.nameEn || p.name }))}
                     className={`text-left px-4 py-3 rounded-2xl border-2 transition-all text-sm font-medium flex items-center justify-between gap-2 ${
                       form.product === p.name
                         ? 'border-wine bg-wine text-cream-light'
@@ -200,7 +219,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
-                    <input type="date" name="date" value={form.date} onChange={handleChange} required className={inputClass} />
+                    <input ref={dateInputRef} type="date" name="date" value={form.date} onChange={handleChange} required className={inputClass} />
                   </div>
                 </div>
                 <div>
@@ -217,7 +236,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
               <div className="bg-cream-light rounded-2xl p-4 shadow-sm text-sm flex flex-col gap-2">
                 {[
-                  { icon: '🍞', label: t('orders.product'), value: form.product },
+                  { icon: '🍞', label: t('orders.product'), value: isEn && form.productEn ? form.productEn : form.product },
                   { icon: '🔢', label: t('orders.quantity'), value: form.quantity },
                   { icon: '📅', label: t('orders.date'), value: form.date },
                   { icon: '👤', label: t('orders.name'), value: form.name },

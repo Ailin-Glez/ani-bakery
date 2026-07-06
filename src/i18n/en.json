@@ -38,6 +38,7 @@
     "productOther": "Other (I'll describe it in the notes)",
     "quantity": "Quantity",
     "date": "Desired date",
+    "dateError": "Date must be at least 2 days from today.",
     "notes": "Additional notes",
     "notesPlaceholder": "Allergies, dedications, special instructions...",
     "submit": "Send order via WhatsApp 💬",
@@ -48,7 +49,7 @@
   "reviews": {
     "title": "What my customers say",
     "subtitle": "Every review is the greatest gift",
-    "leaveTitle": "Already tried Ani's Bakery?",
+    "leaveTitle": "Already tried Ani's Artisan Bakery?",
     "leaveSubtitle": "Your opinion helps me keep improving and reach more people 🥰",
     "leaveBtn": "Write a review",
     "hideForm": "Close",
@@ -83,11 +84,11 @@
     "quote": "\"Made with love, from my kitchen to your table.\""
   },
   "footer": {
-    "copy": "Ani's Bakery · Homemade Baked Goods · Made with ♥"
+    "copy": "Ani's Artisan Bakery · Homemade Baked Goods · Made with ♥"
   },
   "admin": {
     "title": "Admin Panel",
-    "subtitle": "Ani's Bakery",
+    "subtitle": "Ani's Artisan Bakery",
     "passwordLabel": "Password",
     "loginBtn": "Login",
     "wrongPassword": "Wrong password.",
@@ -127,6 +128,31 @@
     "noPendingReviews": "No pending reviews.",
     "noApprovedReviews": "No approved reviews yet.",
     "pendingTab": "Pending",
-    "approvedTab": "Approved"
+    "approvedTab": "Approved",
+    "tabSales": "Sales",
+    "addSale": "Add sale",
+    "newSale": "New sale",
+    "salesStatusAll": "All",
+    "salesStatusPending": "Pending",
+    "salesStatusCompleted": "Completed",
+    "salesStatusCancelled": "Cancelled",
+    "salesTotalRevenue": "Total revenue",
+    "salesTotalOrders": "Total orders",
+    "salesMonthRevenue": "This month",
+    "downloadExcel": "Download Excel",
+    "fieldCustomerName": "Customer name",
+    "fieldPhone": "Phone",
+    "fieldProduct": "Product",
+    "fieldProductOther": "Other / custom",
+    "fieldQuantity": "Quantity",
+    "fieldUnitPrice": "Unit price ($)",
+    "fieldDate": "Date",
+    "fieldNotes": "Notes",
+    "fieldStatus": "Status",
+    "noSales": "No sales recorded yet.",
+    "saleOrigin": "Origin",
+    "originWeb": "Website",
+    "originManual": "Manual",
+    "total": "Total"
   }
 }

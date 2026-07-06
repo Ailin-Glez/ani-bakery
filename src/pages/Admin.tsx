@@ -1,9 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useProducts } from '../context/ProductContext'
 import { useReviews } from '../context/ReviewContext'
-import type { Product } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2 } from 'lucide-react'
+import { useSales } from '../context/SalesContext'
+import { exportSalesToExcel } from '../lib/exportSales'
+import type { Product, SaleStatus } from '../types'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
@@ -11,11 +13,27 @@ const EMPTY_PRODUCT: Omit<Product, 'id'> = {
   name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', available: true,
 }
 
-type Tab = 'products' | 'reviews'
+interface SaleFormData {
+  customerName: string
+  phone: string
+  productName: string
+  quantity: number
+  unitPrice: number
+  date: string
+  notes: string
+  status: SaleStatus
+}
+
+const EMPTY_SALE: SaleFormData = {
+  customerName: '', phone: '', productName: '', quantity: 1, unitPrice: 0, date: '', notes: '', status: 'pending',
+}
+
+type Tab = 'products' | 'sales' | 'reviews'
 type ReviewTab = 'pending' | 'approved'
+type SalesFilter = 'all' | SaleStatus
 
 export default function Admin() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin-authed') === '1')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -28,8 +46,13 @@ export default function Admin() {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [addingSale, setAddingSale] = useState(false)
+  const [saleForm, setSaleForm] = useState<SaleFormData>(EMPTY_SALE)
+  const [salesFilter, setSalesFilter] = useState<SalesFilter>('all')
+
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct } = useProducts()
   const { pendingReviews, approvedReviews, loading: reviewsLoading, approveReview, rejectReview, deleteReview } = useReviews()
+  const { sales, loading: salesLoading, addSale, updateSaleStatus, deleteSale } = useSales()
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
@@ -92,12 +115,69 @@ export default function Admin() {
 
   const inputClass = 'w-full bg-cream border border-rose rounded-xl px-4 py-2.5 text-brown-dark placeholder-brown-mid/40 focus:outline-none focus:border-wine focus:ring-1 focus:ring-wine/30 transition-colors text-sm'
 
+  // ── Sales ──
+  const openAddSale = () => { setAddingSale(true); setSaleForm(EMPTY_SALE) }
+  const closeSaleModal = () => { setAddingSale(false); setSaleForm(EMPTY_SALE) }
+
+  const handleSaleProductChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const name = e.target.value
+    const matched = products.find(p => p.name === name)
+    setSaleForm(prev => ({ ...prev, productName: name, unitPrice: matched ? matched.price : prev.unitPrice }))
+  }
+
+  const handleSaleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setSaleForm(prev => ({
+      ...prev,
+      [name]: name === 'quantity' || name === 'unitPrice' ? Number(value) : value,
+    }))
+  }
+
+  const handleSaleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await addSale({
+      customerName: saleForm.customerName,
+      phone: saleForm.phone,
+      productName: saleForm.productName,
+      quantity: saleForm.quantity,
+      unitPrice: saleForm.unitPrice,
+      total: saleForm.unitPrice * saleForm.quantity,
+      date: saleForm.date,
+      notes: saleForm.notes,
+      status: saleForm.status,
+      source: 'manual',
+    })
+    closeSaleModal()
+  }
+
+  const filteredSales = useMemo(
+    () => salesFilter === 'all' ? sales : sales.filter(s => s.status === salesFilter),
+    [sales, salesFilter]
+  )
+
+  const salesSummary = useMemo(() => {
+    const now = new Date()
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const nonCancelled = sales.filter(s => s.status !== 'cancelled')
+    return {
+      totalRevenue: nonCancelled.reduce((sum, s) => sum + s.total, 0),
+      totalOrders: sales.length,
+      monthRevenue: nonCancelled.filter(s => s.date.startsWith(monthKey)).reduce((sum, s) => sum + s.total, 0),
+    }
+  }, [sales])
+
+  const statusBadgeClass: Record<SaleStatus, string> = {
+    pending: 'bg-amber-100 text-amber-700',
+    completed: 'bg-green-100 text-green-700',
+    cancelled: 'bg-rose-light text-wine',
+  }
+
   // ── Login ──
   if (!authed) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center px-4">
         <div className="bg-cream-light rounded-3xl shadow-xl p-10 w-full max-w-sm text-center">
-          <img src="/ana-logo.jpeg" alt="Ani's Bakery" className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-rose" />
+          <img src="/ana-logo.jpeg" alt="Ani's Artisan Bakery" className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-rose" />
           <h1 className="text-2xl font-bold text-brown-dark mb-1">{t('admin.title')}</h1>
           <p className="text-brown-mid text-sm mb-6">{t('admin.subtitle')}</p>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -129,7 +209,7 @@ export default function Admin() {
       {/* Header */}
       <header className="bg-cream-light border-b border-rose px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/ana-logo.jpeg" alt="Ani's Bakery" className="h-10 w-10 rounded-full object-cover" />
+          <img src="/ana-logo.jpeg" alt="Ani's Artisan Bakery" className="h-10 w-10 rounded-full object-cover" />
           <div>
             <h1 className="font-bold text-brown-dark">{t('admin.title')}</h1>
             <p className="text-xs text-brown-mid">{t('admin.subtitle')}</p>
@@ -146,7 +226,7 @@ export default function Admin() {
       {/* Tabs */}
       <div className="border-b border-rose bg-cream-light">
         <div className="max-w-5xl mx-auto px-6 flex">
-          {(['products', 'reviews'] as Tab[]).map(tabKey => (
+          {(['products', 'sales', 'reviews'] as Tab[]).map(tabKey => (
             <button
               key={tabKey}
               onClick={() => setTab(tabKey)}
@@ -332,6 +412,193 @@ export default function Admin() {
                     <p className="text-6xl mb-4">🍞</p>
                     <p className="text-xl mb-4">{t('admin.noProducts')}</p>
                     <button onClick={openAdd} className="btn-primary">{t('admin.addFirst')}</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── SALES TAB ── */}
+        {tab === 'sales' && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+              <div className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
+                <div className="bg-green-100 text-green-700 rounded-xl p-2.5"><DollarSign size={20} /></div>
+                <div>
+                  <p className="text-xs text-brown-mid">{t('admin.salesTotalRevenue')}</p>
+                  <p className="text-xl font-bold text-brown-dark">${salesSummary.totalRevenue.toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
+                <div className="bg-rose-light text-wine rounded-xl p-2.5"><Receipt size={20} /></div>
+                <div>
+                  <p className="text-xs text-brown-mid">{t('admin.salesTotalOrders')}</p>
+                  <p className="text-xl font-bold text-brown-dark">{salesSummary.totalOrders}</p>
+                </div>
+              </div>
+              <div className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
+                <div className="bg-amber-100 text-amber-700 rounded-xl p-2.5"><CalendarDays size={20} /></div>
+                <div>
+                  <p className="text-xs text-brown-mid">{t('admin.salesMonthRevenue')}</p>
+                  <p className="text-xl font-bold text-brown-dark">${salesSummary.monthRevenue.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+              <div className="flex gap-2 flex-wrap">
+                {(['all', 'pending', 'completed', 'cancelled'] as SalesFilter[]).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setSalesFilter(f)}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                      salesFilter === f ? 'bg-brown-dark text-cream-light' : 'bg-rose-light text-brown-mid hover:bg-rose'
+                    }`}
+                  >
+                    {t(`admin.salesStatus${f.charAt(0).toUpperCase() + f.slice(1)}`)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => exportSalesToExcel(filteredSales, i18n.language === 'en')}
+                  disabled={filteredSales.length === 0}
+                  className="btn-secondary flex items-center gap-2 py-2.5 px-5 text-sm disabled:opacity-50"
+                >
+                  <Download size={16} /> {t('admin.downloadExcel')}
+                </button>
+                <button onClick={openAddSale} className="btn-primary flex items-center gap-2 py-2.5 px-5 text-sm">
+                  <PlusCircle size={18} /> {t('admin.addSale')}
+                </button>
+              </div>
+            </div>
+
+            {/* Add sale modal */}
+            {addingSale && (
+              <div className="fixed inset-0 bg-brown-dark/60 flex items-center justify-center z-50 px-4">
+                <div className="bg-cream-light rounded-3xl shadow-2xl w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-brown-dark">{t('admin.newSale')}</h3>
+                    <button onClick={closeSaleModal} className="text-brown-mid hover:text-brown-dark"><X size={22} /></button>
+                  </div>
+                  <form onSubmit={handleSaleSave} className="flex flex-col gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldCustomerName')} *</label>
+                      <input name="customerName" value={saleForm.customerName} onChange={handleSaleFieldChange} required className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldPhone')}</label>
+                      <input name="phone" value={saleForm.phone} onChange={handleSaleFieldChange} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldProduct')} *</label>
+                      <select
+                        name="productName"
+                        value={products.some(p => p.name === saleForm.productName) ? saleForm.productName : (saleForm.productName ? '__other__' : '')}
+                        onChange={handleSaleProductChange}
+                        required
+                        className={inputClass}
+                      >
+                        <option value="">{t('orders.productPlaceholder')}</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.name}>{p.name} — ${p.price}</option>
+                        ))}
+                        <option value="__other__">{t('admin.fieldProductOther')}</option>
+                      </select>
+                      {!products.some(p => p.name === saleForm.productName) && saleForm.productName !== '' && (
+                        <input
+                          name="productName"
+                          value={saleForm.productName === '__other__' ? '' : saleForm.productName}
+                          onChange={handleSaleFieldChange}
+                          placeholder={t('admin.fieldProduct')}
+                          className={`${inputClass} mt-2`}
+                        />
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldQuantity')} *</label>
+                        <input type="number" name="quantity" value={saleForm.quantity} onChange={handleSaleFieldChange} required min={1} className={inputClass} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldUnitPrice')} *</label>
+                        <input type="number" name="unitPrice" value={saleForm.unitPrice} onChange={handleSaleFieldChange} required min={0} step={0.5} className={inputClass} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldDate')} *</label>
+                        <input type="date" name="date" value={saleForm.date} onChange={handleSaleFieldChange} required className={inputClass} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldStatus')}</label>
+                        <select name="status" value={saleForm.status} onChange={handleSaleFieldChange} className={inputClass}>
+                          <option value="pending">{t('admin.salesStatusPending')}</option>
+                          <option value="completed">{t('admin.salesStatusCompleted')}</option>
+                          <option value="cancelled">{t('admin.salesStatusCancelled')}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldNotes')}</label>
+                      <textarea name="notes" value={saleForm.notes} onChange={handleSaleFieldChange} rows={2} className={`${inputClass} resize-none`} />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button type="submit" className="btn-primary flex-1 text-center text-sm py-3">{t('admin.addSale')}</button>
+                      <button type="button" onClick={closeSaleModal} className="btn-secondary flex-1 text-center text-sm py-3">{t('admin.cancel')}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {salesLoading ? (
+              <div className="flex items-center justify-center py-20 gap-3 text-brown-mid">
+                <Loader2 size={24} className="animate-spin" /> Cargando...
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {filteredSales.map(sale => (
+                  <div key={sale.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col sm:flex-row gap-4 sm:items-center shadow-sm">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-brown-dark">{sale.customerName}</h3>
+                          <p className="text-xs text-wine font-medium">{sale.productName} × {sale.quantity}</p>
+                        </div>
+                        <span className="text-lg font-bold text-wine flex-shrink-0">${sale.total.toFixed(2)}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <span className="text-xs text-brown-mid">{sale.date}</span>
+                        {sale.phone && <span className="text-xs text-brown-mid">· {sale.phone}</span>}
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sale.source === 'web' ? 'bg-blue-100 text-blue-700' : 'bg-beige-light text-brown-mid'}`}>
+                          {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
+                        </span>
+                      </div>
+                      {sale.notes && <p className="text-brown-mid text-xs mt-1.5 italic">"{sale.notes}"</p>}
+                    </div>
+                    <div className="flex sm:flex-col gap-2 flex-shrink-0">
+                      <select
+                        value={sale.status}
+                        onChange={e => updateSaleStatus(sale.id, e.target.value as SaleStatus)}
+                        className={`text-xs font-semibold px-3 py-2 rounded-xl border-0 cursor-pointer ${statusBadgeClass[sale.status]}`}
+                      >
+                        <option value="pending">{t('admin.salesStatusPending')}</option>
+                        <option value="completed">{t('admin.salesStatusCompleted')}</option>
+                        <option value="cancelled">{t('admin.salesStatusCancelled')}</option>
+                      </select>
+                      <button onClick={() => { if (confirm(`${t('admin.delete')}?`)) deleteSale(sale.id) }} className="flex items-center gap-1.5 text-sm text-wine transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
+                        <Trash2 size={14} /> {t('admin.delete')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {filteredSales.length === 0 && (
+                  <div className="text-center py-20 text-brown-mid">
+                    <p className="text-6xl mb-4">🧾</p>
+                    <p className="text-xl mb-4">{t('admin.noSales')}</p>
+                    <button onClick={openAddSale} className="btn-primary">{t('admin.addSale')}</button>
                   </div>
                 )}
               </div>

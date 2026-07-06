@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu, X } from 'lucide-react'
+import { business } from '../config/business'
 
 export default function Navbar() {
   const { t, i18n } = useTranslation()
@@ -42,9 +43,9 @@ export default function Navbar() {
     <nav className="bg-cream-light/90 backdrop-blur-sm sticky top-0 z-50 shadow-sm border-b border-beige">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <a href="#inicio" className="flex items-center gap-2">
-          <img src="/ana-logo.jpeg" alt="Ani's Bakery" className="h-12 w-12 rounded-full object-cover" />
+          <img src={business.logo} alt={business.name} className="h-12 w-12 rounded-full object-cover" />
           <span className="text-brown-dark font-bold text-xl hidden sm:block" style={{ fontFamily: '"DM Serif Display", Georgia, serif' }}>
-            Ani's Bakery
+            {business.name}
           </span>
         </a>
 

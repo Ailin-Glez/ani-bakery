@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { business } from '../config/business'
 
 export default function Hero({ onOrderClick }: { onOrderClick: () => void }) {
   const { t } = useTranslation()
@@ -7,14 +8,14 @@ export default function Hero({ onOrderClick }: { onOrderClick: () => void }) {
     <section id="inicio" className="min-h-[90vh] flex items-center justify-center bg-gradient-to-b from-cream-light to-cream px-4 py-20">
       <div className="max-w-4xl mx-auto text-center flex flex-col items-center gap-8">
         <img
-          src="/ana-logo.jpeg"
-          alt="Ani's Bakery"
+          src={business.logo}
+          alt={business.name}
           className="w-56 h-56 md:w-72 md:h-72 rounded-full object-cover shadow-2xl border-4 border-rose"
         />
 
         <div className="flex flex-col items-center gap-4">
           <h1 className="text-5xl md:text-7xl font-bold text-brown-dark leading-tight">
-            Ani's Bakery
+            Ani's Artisan Bakery
           </h1>
           <p className="text-wine font-medium tracking-[0.25em] text-sm uppercase italic">
             {t('hero.tagline')}

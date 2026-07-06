@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useProducts } from '../context/ProductContext'
+import { useSales } from '../context/SalesContext'
+import { buildWhatsAppOrderLink, buildOrderMessage, isOrderDateValid } from '../config/business'
 
 interface FormData {
   name: string
@@ -16,25 +18,50 @@ const EMPTY: FormData = { name: '', phone: '', product: '', quantity: 1, date: '
 export default function Orders() {
   const { t, i18n } = useTranslation()
   const { products } = useProducts()
+  const { addSale } = useSales()
   const [form, setForm] = useState<FormData>(EMPTY)
   const [sent, setSent] = useState(false)
+  const dateInputRef = useRef<HTMLInputElement>(null)
 
   const availableProducts = products.filter(p => p.available)
 
+  const validateDate = (value: string) => {
+    const input = dateInputRef.current
+    if (!input) return
+    input.setCustomValidity(value && !isOrderDateValid(value) ? t('orders.dateError') : '')
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
+    if (name === 'date') {
+      validateDate(value)
+      e.target.reportValidity()
+    }
     setForm(prev => ({ ...prev, [name]: name === 'quantity' ? Number(value) : value }))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isOrderDateValid(form.date)) {
+      dateInputRef.current?.reportValidity()
+      return
+    }
     const isEn = i18n.language === 'en'
-    const message = encodeURIComponent(
-      isEn
-        ? `Hi Ani! I'd like to place an order 🎉\n\n👤 Name: ${form.name}\n📱 Phone: ${form.phone}\n🍞 Product: ${form.product}\n🔢 Quantity: ${form.quantity}\n📅 Desired date: ${form.date}\n${form.notes ? `📝 Notes: ${form.notes}\n` : ''}\nThank you!`
-        : `¡Hola Ani! Quiero hacer un encargo 🎉\n\n👤 Nombre: ${form.name}\n📱 Teléfono: ${form.phone}\n🍞 Producto: ${form.product}\n🔢 Cantidad: ${form.quantity}\n📅 Fecha deseada: ${form.date}\n${form.notes ? `📝 Notas: ${form.notes}\n` : ''}\n¡Gracias!`
-    )
-    window.open(`https://wa.me/TUNUMERO?text=${message}`, '_blank')
+    const message = buildOrderMessage(form, isEn)
+    window.open(buildWhatsAppOrderLink(message), '_blank')
+    const matchedProduct = products.find(p => p.name === form.product)
+    addSale({
+      customerName: form.name,
+      phone: form.phone,
+      productName: form.product,
+      quantity: form.quantity,
+      unitPrice: matchedProduct?.price ?? 0,
+      total: (matchedProduct?.price ?? 0) * form.quantity,
+      date: form.date,
+      notes: form.notes,
+      status: 'pending',
+      source: 'web',
+    })
     setSent(true)
     setTimeout(() => { setSent(false); setForm(EMPTY) }, 4000)
   }
@@ -85,7 +112,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
-                  <input type="date" name="date" value={form.date} onChange={handleChange} required className={inputClass} />
+                  <input ref={dateInputRef} type="date" name="date" value={form.date} onChange={handleChange} required className={inputClass} />
                 </div>
               </div>
 

@@ -38,6 +38,7 @@
     "productOther": "Otro (lo describo en las notas)",
     "quantity": "Cantidad",
     "date": "Fecha deseada",
+    "dateError": "La fecha debe ser al menos 2 días después de hoy.",
     "notes": "Notas adicionales",
     "notesPlaceholder": "Alergias, dedicatorias, instrucciones especiales...",
     "submit": "Enviar encargo por WhatsApp 💬",
@@ -48,7 +49,7 @@
   "reviews": {
     "title": "Lo que dicen mis clientes",
     "subtitle": "Cada reseña es el mayor regalo",
-    "leaveTitle": "¿Ya probaste algo de Ani's Bakery?",
+    "leaveTitle": "¿Ya probaste algo de Ani's Artisan Bakery?",
     "leaveSubtitle": "Tu opinión me ayuda a seguir mejorando y llegar a más personas 🥰",
     "leaveBtn": "Escribir una reseña",
     "hideForm": "Cerrar",
@@ -83,11 +84,11 @@
     "quote": "\"Hecho con amor, desde mi cocina hasta tu mesa.\""
   },
   "footer": {
-    "copy": "Ani's Bakery · Homemade Baked Goods · Hecho con ♥"
+    "copy": "Ani's Artisan Bakery · Homemade Baked Goods · Hecho con ♥"
   },
   "admin": {
     "title": "Panel Admin",
-    "subtitle": "Ani's Bakery",
+    "subtitle": "Ani's Artisan Bakery",
     "passwordLabel": "Contraseña",
     "loginBtn": "Entrar",
     "wrongPassword": "Contraseña incorrecta.",
@@ -127,6 +128,31 @@
     "noPendingReviews": "No hay reseñas pendientes.",
     "noApprovedReviews": "No hay reseñas aprobadas aún.",
     "pendingTab": "Pendientes",
-    "approvedTab": "Aprobadas"
+    "approvedTab": "Aprobadas",
+    "tabSales": "Ventas",
+    "addSale": "Agregar venta",
+    "newSale": "Nueva venta",
+    "salesStatusAll": "Todas",
+    "salesStatusPending": "Pendientes",
+    "salesStatusCompleted": "Completadas",
+    "salesStatusCancelled": "Canceladas",
+    "salesTotalRevenue": "Ingresos totales",
+    "salesTotalOrders": "Total de pedidos",
+    "salesMonthRevenue": "Este mes",
+    "downloadExcel": "Descargar Excel",
+    "fieldCustomerName": "Nombre del cliente",
+    "fieldPhone": "Teléfono",
+    "fieldProduct": "Producto",
+    "fieldProductOther": "Otro / personalizado",
+    "fieldQuantity": "Cantidad",
+    "fieldUnitPrice": "Precio unitario ($)",
+    "fieldDate": "Fecha",
+    "fieldNotes": "Notas",
+    "fieldStatus": "Estado",
+    "noSales": "No hay ventas registradas todavía.",
+    "saleOrigin": "Origen",
+    "originWeb": "Sitio web",
+    "originManual": "Manual",
+    "total": "Total"
   }
 }

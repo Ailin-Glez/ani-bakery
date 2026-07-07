@@ -70,8 +70,8 @@ export default function Navbar() {
               className="flex items-center gap-1 text-sm font-semibold text-brown-mid hover:text-brown-dark transition-colors border border-beige rounded-full px-3 py-1.5"
               title={i18n.language === 'es' ? 'Switch to English' : 'Cambiar a Español'}
             >
-              <span className="text-base">{i18n.language === 'es' ? '🇺🇸' : '🇪🇸'}</span>
-              {i18n.language === 'es' ? 'EN' : 'ES'}
+              <span className="text-base">{i18n.language === 'es' ? '🇪🇸' : '🇺🇸'}</span>
+              {i18n.language === 'es' ? 'ES' : 'EN'}
             </button>
           </li>
         </ul>
@@ -81,8 +81,8 @@ export default function Navbar() {
             onClick={toggleLang}
             className="flex items-center gap-1 text-sm font-semibold text-brown-mid border border-beige rounded-full px-2.5 py-1"
           >
-            <span className="text-base">{i18n.language === 'es' ? '🇺🇸' : '🇪🇸'}</span>
-            {i18n.language === 'es' ? 'EN' : 'ES'}
+            <span className="text-base">{i18n.language === 'es' ? '🇪🇸' : '🇺🇸'}</span>
+            {i18n.language === 'es' ? 'ES' : 'EN'}
           </button>
           <button className="text-brown-dark" onClick={() => setOpen(!open)}>
             {open ? <X size={24} /> : <Menu size={24} />}

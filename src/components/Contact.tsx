@@ -51,7 +51,7 @@ export default function Contact() {
 
         {/* Photo + bio */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="h-64 md:h-full rounded-3xl overflow-hidden border-4" style={{ borderColor: 'rgba(255,252,250,0.4)' }}>
+          <div className="aspect-[4/5] md:aspect-auto md:h-full rounded-3xl overflow-hidden border-4" style={{ borderColor: 'rgba(255,252,250,0.4)' }}>
             <img
               src={business.bakerPhoto}
               alt={business.bakerName}

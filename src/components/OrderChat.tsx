@@ -1,21 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, ShoppingBag, ChevronRight, ChevronLeft, Send } from 'lucide-react'
+import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useSales } from '../context/SalesContext'
 import { business, buildWhatsAppOrderLink, buildOrderMessage, isOrderDateValid } from '../config/business'
 
-interface FormData {
-  name: string
-  phone: string
+interface CartItem {
   product: string
   productEn: string
   quantity: number
+  unitPrice: number
+}
+
+interface DetailsForm {
+  name: string
+  phone: string
   date: string
   notes: string
 }
 
-const EMPTY: FormData = { name: '', phone: '', product: '', productEn: '', quantity: 1, date: '', notes: '' }
+const EMPTY_DETAILS: DetailsForm = { name: '', phone: '', date: '', notes: '' }
 
 const STEPS = ['product', 'details', 'confirm'] as const
 type Step = typeof STEPS[number]
@@ -50,48 +54,92 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const { products } = useProducts()
   const { addSale } = useSales()
   const [step, setStep] = useState<Step>('product')
-  const [form, setForm] = useState<FormData>(EMPTY)
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [customName, setCustomName] = useState('')
+  const [addingCustom, setAddingCustom] = useState(false)
+  const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
   const [sent, setSent] = useState(false)
   const dateInputRef = useRef<HTMLInputElement>(null)
 
+  const isEn = i18n.language === 'en'
+  const availableProducts = products.filter(p => p.available)
+
   useEffect(() => {
     if (open && initialProduct) {
-      setForm(prev => ({ ...prev, product: initialProduct }))
+      const matched = products.find(p => p.name === initialProduct)
+      setCart([{
+        product: initialProduct,
+        productEn: matched?.nameEn || initialProduct,
+        quantity: 1,
+        unitPrice: matched?.price ?? 0,
+      }])
       setStep('details')
     }
-  }, [open, initialProduct])
+  }, [open, initialProduct, products])
 
-  const availableProducts = products.filter(p => p.available)
-  const isEn = i18n.language === 'en'
-
-  const reset = () => { setForm(EMPTY); setStep('product'); setSent(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setCustomName(''); setAddingCustom(false); setStep('product'); setSent(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const addToCart = (p: { name: string; nameEn?: string; price: number }) => {
+    setCart(prev => {
+      const idx = prev.findIndex(item => item.product === p.name)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 }
+        return next
+      }
+      return [...prev, { product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price }]
+    })
+  }
+
+  const addCustomItem = () => {
+    if (!customName.trim()) return
+    setCart(prev => [...prev, { product: customName.trim(), productEn: customName.trim(), quantity: 1, unitPrice: 0 }])
+    setCustomName('')
+    setAddingCustom(false)
+  }
+
+  const changeQuantity = (product: string, delta: number) => {
+    setCart(prev => prev
+      .map(item => item.product === product ? { ...item, quantity: item.quantity + delta } : item)
+      .filter(item => item.quantity > 0))
+  }
+
+  const removeFromCart = (product: string) => {
+    setCart(prev => prev.filter(item => item.product !== product))
+  }
+
+  const handleDetailsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     if (name === 'date') {
       dateInputRef.current?.setCustomValidity(value && !isOrderDateValid(value) ? t('orders.dateError') : '')
       e.target.reportValidity()
     }
-    setForm(prev => ({ ...prev, [name]: name === 'quantity' ? Number(value) : value }))
+    setDetails(prev => ({ ...prev, [name]: value }))
   }
 
+  const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+
   const sendWhatsApp = () => {
-    const product = isEn && form.productEn ? form.productEn : form.product
-    const message = buildOrderMessage({ ...form, product }, isEn)
+    const items = cart.map(item => ({
+      product: isEn && item.productEn ? item.productEn : item.product,
+      quantity: item.quantity,
+    }))
+    const message = buildOrderMessage({ ...details, items }, isEn)
     window.open(buildWhatsAppOrderLink(message), '_blank')
-    const matchedProduct = products.find(p => p.name === form.product)
-    addSale({
-      customerName: form.name,
-      phone: form.phone,
-      productName: form.product,
-      quantity: form.quantity,
-      unitPrice: matchedProduct?.price ?? 0,
-      total: (matchedProduct?.price ?? 0) * form.quantity,
-      date: form.date,
-      notes: form.notes,
-      status: 'pending',
-      source: 'web',
+    cart.forEach(item => {
+      addSale({
+        customerName: details.name,
+        phone: details.phone,
+        productName: item.product,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.unitPrice * item.quantity,
+        date: details.date,
+        notes: details.notes,
+        status: 'pending',
+        source: 'web',
+      })
     })
     setSent(true)
   }
@@ -99,9 +147,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const inputClass = 'w-full bg-cream border border-rose rounded-xl px-4 py-2.5 text-brown-dark placeholder-brown-mid/40 focus:outline-none focus:border-wine focus:ring-1 focus:ring-wine/30 transition-colors text-sm'
 
   const canGoNext = step === 'product'
-    ? !!form.product
+    ? cart.length > 0
     : step === 'details'
-    ? !!form.name && !!form.phone && !!form.product && isOrderDateValid(form.date)
+    ? !!details.name && !!details.phone && isOrderDateValid(details.date)
     : true
 
   if (!open) return null
@@ -154,40 +202,79 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                 {isEn ? '👋 Hi! What would you like to order?' : '👋 ¡Hola! ¿Qué te gustaría encargar?'}
               </ChatBubble>
               <ChatBubble delay={300}>
-                {isEn ? 'Choose a product or tell me what you need 🍞' : 'Elige un producto o cuéntame qué necesitas 🍞'}
+                {isEn ? 'Add as many products as you need 🍞' : 'Agrega todos los productos que necesites 🍞'}
               </ChatBubble>
 
               <div className="flex flex-col gap-2 mt-2">
-                {availableProducts.map(p => (
+                {availableProducts.map(p => {
+                  const inCart = cart.find(item => item.product === p.name)
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addToCart(p)}
+                      className={`text-left px-4 py-3 rounded-2xl border-2 transition-all text-sm font-medium flex items-center justify-between gap-2 ${
+                        inCart
+                          ? 'border-wine bg-wine text-cream-light'
+                          : 'border-rose bg-cream-light text-brown-dark hover:border-wine/60'
+                      }`}
+                    >
+                      <span>
+                        <span className="font-semibold">{isEn && p.nameEn ? p.nameEn : p.name}</span>
+                        <span className="ml-2 font-normal opacity-70">${p.price}</span>
+                      </span>
+                      {inCart
+                        ? <span className="text-xs font-bold opacity-90">{inCart.quantity} ✓</span>
+                        : <ChevronRight size={16} className="flex-shrink-0 opacity-60" />}
+                    </button>
+                  )
+                })}
+
+                {addingCustom ? (
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus
+                      value={customName}
+                      onChange={e => setCustomName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') addCustomItem() }}
+                      placeholder={isEn ? 'What would you like to order?' : '¿Qué quieres encargar?'}
+                      className={inputClass}
+                    />
+                    <button onClick={addCustomItem} className="btn-primary text-sm px-4 flex-shrink-0">
+                      {isEn ? 'Add' : 'Agregar'}
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    key={p.id}
-                    onClick={() => setForm(prev => ({ ...prev, product: p.name, productEn: p.nameEn || p.name }))}
-                    className={`text-left px-4 py-3 rounded-2xl border-2 transition-all text-sm font-medium flex items-center justify-between gap-2 ${
-                      form.product === p.name
-                        ? 'border-wine bg-wine text-cream-light'
-                        : 'border-rose bg-cream-light text-brown-dark hover:border-wine/60'
-                    }`}
+                    onClick={() => setAddingCustom(true)}
+                    className="text-left px-4 py-3 rounded-2xl border-2 border-dashed border-rose bg-cream-light text-brown-mid hover:border-wine/60 transition-all text-sm"
                   >
-                    <span>
-                      <span className="font-semibold">{isEn && (p as any).nameEn ? (p as any).nameEn : p.name}</span>
-                      <span className="ml-2 font-normal opacity-70">${p.price}</span>
-                    </span>
-                    {form.product === p.name
-                      ? <span className="text-xs font-bold opacity-90">✓</span>
-                      : <ChevronRight size={16} className="flex-shrink-0 opacity-60" />}
+                    {t('orders.productOther')}
                   </button>
-                ))}
-                <button
-                  onClick={() => setForm(prev => ({ ...prev, product: 'Otro' }))}
-                  className={`text-left px-4 py-3 rounded-2xl border-2 border-dashed transition-all text-sm ${
-                    form.product === 'Otro'
-                      ? 'border-wine bg-wine text-cream-light'
-                      : 'border-rose bg-cream-light text-brown-mid hover:border-wine/60'
-                  }`}
-                >
-                  {t('orders.productOther')}
-                </button>
+                )}
               </div>
+
+              {cart.length > 0 && (
+                <div className="bg-cream-light rounded-2xl p-4 shadow-sm flex flex-col gap-2 mt-2">
+                  <p className="text-xs font-bold text-brown-dark uppercase tracking-wide">{t('orders.yourOrder')}</p>
+                  {cart.map(item => (
+                    <div key={item.product} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-brown-dark flex-1 truncate">{isEn ? item.productEn : item.product}</span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button onClick={() => changeQuantity(item.product, -1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-light text-wine hover:bg-rose">
+                          <Minus size={12} />
+                        </button>
+                        <span className="w-5 text-center font-semibold text-brown-dark">{item.quantity}</span>
+                        <button onClick={() => changeQuantity(item.product, 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-light text-wine hover:bg-rose">
+                          <Plus size={12} />
+                        </button>
+                        <button onClick={() => removeFromCart(item.product)} className="ml-1 text-brown-light hover:text-wine">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           ) : step === 'details' ? (
             <>
@@ -198,33 +285,21 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </ChatBubble>
 
               <div className="bg-cream-light rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
-                {form.product === 'Otro' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.product')} *</label>
-                    <input name="product" value={form.product === 'Otro' ? '' : form.product} onChange={e => setForm(prev => ({ ...prev, product: e.target.value }))} required placeholder={isEn ? 'What would you like to order?' : '¿Qué quieres encargar?'} className={inputClass} />
-                  </div>
-                )}
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.name')} *</label>
-                  <input name="name" value={form.name} onChange={handleChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
+                  <input name="name" value={details.name} onChange={handleDetailsChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.phone')} *</label>
-                  <input name="phone" value={form.phone} onChange={handleChange} required placeholder={t('orders.phonePlaceholder')} className={inputClass} />
+                  <input name="phone" value={details.phone} onChange={handleDetailsChange} required placeholder={t('orders.phonePlaceholder')} className={inputClass} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.quantity')} *</label>
-                    <input type="number" name="quantity" value={form.quantity} onChange={handleChange} required min={1} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
-                    <input ref={dateInputRef} type="date" name="date" value={form.date} onChange={handleChange} required className={inputClass} />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
+                  <input ref={dateInputRef} type="date" name="date" value={details.date} onChange={handleDetailsChange} required className={inputClass} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.notes')}</label>
-                  <textarea name="notes" value={form.notes} onChange={handleChange} placeholder={t('orders.notesPlaceholder')} rows={2} className={`${inputClass} resize-none`} />
+                  <textarea name="notes" value={details.notes} onChange={handleDetailsChange} placeholder={t('orders.notesPlaceholder')} rows={2} className={`${inputClass} resize-none`} />
                 </div>
               </div>
             </>
@@ -235,13 +310,25 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </ChatBubble>
 
               <div className="bg-cream-light rounded-2xl p-4 shadow-sm text-sm flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5 pb-2 border-b border-rose">
+                  {cart.map(item => (
+                    <div key={item.product} className="flex justify-between gap-2">
+                      <span className="text-brown-dark">{(isEn ? item.productEn : item.product)} × {item.quantity}</span>
+                      {item.unitPrice > 0 && <span className="text-brown-mid flex-shrink-0">${(item.unitPrice * item.quantity).toFixed(2)}</span>}
+                    </div>
+                  ))}
+                  {cartTotal > 0 && (
+                    <div className="flex justify-between gap-2 font-bold text-brown-dark pt-1">
+                      <span>{t('admin.total')}</span>
+                      <span>${cartTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
                 {[
-                  { icon: '🍞', label: t('orders.product'), value: isEn && form.productEn ? form.productEn : form.product },
-                  { icon: '🔢', label: t('orders.quantity'), value: form.quantity },
-                  { icon: '📅', label: t('orders.date'), value: form.date },
-                  { icon: '👤', label: t('orders.name'), value: form.name },
-                  { icon: '📱', label: t('orders.phone'), value: form.phone },
-                  ...(form.notes ? [{ icon: '📝', label: t('orders.notes'), value: form.notes }] : []),
+                  { icon: '📅', label: t('orders.date'), value: details.date },
+                  { icon: '👤', label: t('orders.name'), value: details.name },
+                  { icon: '📱', label: t('orders.phone'), value: details.phone },
+                  ...(details.notes ? [{ icon: '📝', label: t('orders.notes'), value: details.notes }] : []),
                 ].map(row => (
                   <div key={row.label} className="flex gap-2">
                     <span>{row.icon}</span>

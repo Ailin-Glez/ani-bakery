@@ -41,8 +41,7 @@ describe('buildOrderMessage', () => {
   const form = {
     name: 'Ana García',
     phone: '+1 803 555 0123',
-    product: 'Pan Artesanal',
-    quantity: 2,
+    items: [{ product: 'Pan Artesanal', quantity: 2 }],
     date: '2099-01-01',
     notes: '',
   }
@@ -51,8 +50,17 @@ describe('buildOrderMessage', () => {
     const message = buildOrderMessage(form, false)
     expect(message).toContain('Ana García')
     expect(message).toContain('Pan Artesanal')
-    expect(message).toContain('2')
+    expect(message).toContain('x2')
     expect(message).toContain('encargo')
+  })
+
+  it('lists multiple items, one per line', () => {
+    const message = buildOrderMessage({
+      ...form,
+      items: [{ product: 'Pan Artesanal', quantity: 2 }, { product: 'Galletas de Avena', quantity: 6 }],
+    }, false)
+    expect(message).toContain('Pan Artesanal x2')
+    expect(message).toContain('Galletas de Avena x6')
   })
 
   it('builds an English message with the order details', () => {

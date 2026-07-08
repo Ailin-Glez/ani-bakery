@@ -43,6 +43,7 @@
     "notesPlaceholder": "Allergies, dedications, special instructions...",
     "submit": "Send order via WhatsApp 💬",
     "note": "I'll reply within 24 hours to confirm availability and arrange delivery.",
+    "yourOrder": "Your order",
     "successTitle": "Order sent!",
     "successText": "Redirecting you to WhatsApp to confirm your order. See you soon!"
   },
@@ -80,8 +81,7 @@
     "delivery": "Delivery area",
     "deliveryValue": "South Carolina, USA",
     "deliverySub": "Home delivery or pickup",
-    "bio": "Baking is my passion and doing it for you is my greatest joy. Every order is prepared with the best ingredients and all the care you deserve.",
-    "quote": "\"Made with love, from my kitchen to your table.\""
+    "bio": "My name is Anabel Rodríguez, and from my home I bring Ani’s Artisan Bakery to life — a space where I bake with heart.\n\nWhat began as a passion grew into a micro‑bakery where I share handcrafted cookies and sourdough bread, made with care, patience, and respect for the process.\n\nI believe in the power of food to bring people together, and each creation is a way to connect with my community and bring a little happiness to their table."
   },
   "footer": {
     "copy": "Ani's Artisan Bakery · Homemade Baked Goods · Made with ♥"

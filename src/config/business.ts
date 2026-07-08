@@ -12,6 +12,8 @@ export const business = {
     url: 'https://www.instagram.com/anisartisanbakery/',
   },
   logo: '/ana-logo.jpeg',
+  bakerName: 'Anabel Rodríguez',
+  bakerPhoto: '/anabel.jpeg',
 }
 
 export function buildWhatsAppOrderLink(message: string) {
@@ -37,24 +39,29 @@ export function isOrderDateValid(dateStr: string) {
   return !!dateStr && dateStr >= getMinOrderDate()
 }
 
+interface OrderItem {
+  product: string
+  quantity: number
+}
+
 interface OrderMessageData {
   name: string
   phone: string
-  product: string
-  quantity: number
+  items: OrderItem[]
   date: string
   notes: string
 }
 
 export function buildOrderMessage(form: OrderMessageData, isEn: boolean) {
+  const itemLines = form.items.map(i => `• ${i.product} x${i.quantity}`)
   const lines = isEn
     ? [
         `Hi Ani! I'd like to place an order`,
         '',
         `*Name:* ${form.name}`,
         `*Phone:* ${form.phone}`,
-        `*Product:* ${form.product}`,
-        `*Quantity:* ${form.quantity}`,
+        `*Products:*`,
+        ...itemLines,
         `*Desired date:* ${form.date}`,
         ...(form.notes ? [`*Notes:* ${form.notes}`] : []),
         '',
@@ -65,8 +72,8 @@ export function buildOrderMessage(form: OrderMessageData, isEn: boolean) {
         '',
         `*Nombre:* ${form.name}`,
         `*Teléfono:* ${form.phone}`,
-        `*Producto:* ${form.product}`,
-        `*Cantidad:* ${form.quantity}`,
+        `*Productos:*`,
+        ...itemLines,
         `*Fecha deseada:* ${form.date}`,
         ...(form.notes ? [`*Notas:* ${form.notes}`] : []),
         '',

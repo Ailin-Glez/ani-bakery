@@ -43,6 +43,7 @@
     "notesPlaceholder": "Alergias, dedicatorias, instrucciones especiales...",
     "submit": "Enviar encargo por WhatsApp 💬",
     "note": "Te responderé en menos de 24 horas para confirmar disponibilidad y coordinar la entrega.",
+    "yourOrder": "Tu pedido",
     "successTitle": "¡Encargo enviado!",
     "successText": "Te estoy redirigiendo a WhatsApp para confirmar tu encargo. ¡Nos vemos pronto!"
   },
@@ -80,8 +81,7 @@
     "delivery": "Zona de entrega",
     "deliveryValue": "South Carolina, USA",
     "deliverySub": "Entrega a domicilio o retiro",
-    "bio": "Hornear es mi pasión y hacerlo para ti es mi mayor alegría. Cada encargo lo preparo con los mejores ingredientes y con toda la dedicación que mereces.",
-    "quote": "\"Hecho con amor, desde mi cocina hasta tu mesa.\""
+    "bio": "Mi nombre es Anabel Rodríguez y desde mi hogar doy vida a Ani’s Artisan Bakery, un espacio donde horneo con corazón.\n\nLo que comenzó como una pasión se convirtió en una micro‑bakery donde comparto galletas artesanales y pan de masa madre, elaborados con cariño, paciencia y respeto por el proceso.\n\nCreo en el poder de la comida para unir a las personas, y cada creación es una forma de conectar con mi comunidad y llevar un poco de felicidad a su mesa."
   },
   "footer": {
     "copy": "Ani's Artisan Bakery · Homemade Baked Goods · Hecho con ♥"

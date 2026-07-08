@@ -95,15 +95,27 @@ export default function Contact() {
             </ContactCard>
           </div>
 
-          <div className="rounded-3xl p-8 flex flex-col justify-between" style={{ backgroundColor: SIDE_BG }}>
+          <div className="rounded-3xl p-8" style={{ backgroundColor: SIDE_BG }}>
             <div>
-              <img src={business.logo} alt={business.name} className="w-28 h-28 rounded-full object-cover mx-auto mb-6 border-4" style={{ borderColor: 'rgba(255,252,250,0.4)' }} />
-              <h3 className="text-2xl font-bold text-center mb-3" style={{ color: CREAM }}>
-                {business.name}
+              <img
+                src={business.bakerPhoto}
+                alt={business.bakerName}
+                onError={e => { (e.currentTarget as HTMLImageElement).src = business.logo }}
+                className="w-32 h-32 rounded-full object-cover mx-auto mb-6 border-4"
+                style={{ borderColor: 'rgba(255,252,250,0.4)' }}
+              />
+              <h3 className="text-2xl font-bold text-center mb-1" style={{ color: CREAM }}>
+                {business.bakerName}
               </h3>
-              <p className="text-center leading-relaxed" style={{ color: 'rgba(255,252,250,0.85)' }}>{t('contact.bio')}</p>
+              <p className="text-center text-sm mb-3" style={{ color: 'rgba(255,252,250,0.65)' }}>
+                {business.name}
+              </p>
+              <div className="flex flex-col gap-3">
+                {t('contact.bio').split('\n\n').map((paragraph, i) => (
+                  <p key={i} className="text-center leading-relaxed" style={{ color: 'rgba(255,252,250,0.85)' }}>{paragraph}</p>
+                ))}
+              </div>
             </div>
-            <p className="mt-6 text-center text-sm italic" style={{ color: 'rgba(255,252,250,0.65)' }}>{t('contact.quote')}</p>
           </div>
         </div>
       </div>

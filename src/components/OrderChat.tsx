@@ -160,7 +160,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       <div className="fixed inset-0 bg-brown-dark/40 z-50 backdrop-blur-sm" onClick={close} />
 
       {/* Panel */}
-      <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-[400px] max-h-[90dvh] flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl animate-[slideUp_0.35s_cubic-bezier(.32,.72,0,1)]">
+      <div className="fixed inset-0 sm:inset-auto sm:bottom-6 sm:right-6 z-50 w-full sm:w-[400px] h-full sm:h-auto sm:max-h-[90dvh] flex flex-col rounded-none sm:rounded-3xl overflow-hidden shadow-2xl animate-[slideUp_0.35s_cubic-bezier(.32,.72,0,1)]">
 
         {/* Chat header */}
         <div className="bg-wine px-5 py-4 flex items-center gap-3 flex-shrink-0">

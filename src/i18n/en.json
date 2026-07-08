@@ -117,6 +117,8 @@
     "fieldImageUploadBtn": "Upload from my device",
     "fieldNameEn": "Name in English",
     "fieldDescriptionEn": "Description in English",
+    "fieldCategoryEn": "Category in English",
+    "fieldCategoryEnPlaceholder": "Bread, Cookies, Cakes...",
     "fieldTranslationHint": "Optional — shown when the site is in English",
     "fieldImage": "Image URL",
     "fieldImagePlaceholder": "/bread.jpeg or external URL",

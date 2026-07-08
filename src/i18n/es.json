@@ -117,6 +117,8 @@
     "fieldImageUploadBtn": "Subir desde mi dispositivo",
     "fieldNameEn": "Nombre en inglés",
     "fieldDescriptionEn": "Descripción en inglés",
+    "fieldCategoryEn": "Categoría en inglés",
+    "fieldCategoryEnPlaceholder": "Bread, Cookies, Cakes...",
     "fieldTranslationHint": "Opcional — se muestra cuando el sitio está en inglés",
     "fieldImage": "URL de imagen",
     "fieldImagePlaceholder": "/bread.jpeg o URL externa",

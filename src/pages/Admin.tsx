@@ -10,7 +10,7 @@ import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, I
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
 const EMPTY_PRODUCT: Omit<Product, 'id'> = {
-  name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', available: true,
+  name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', categoryEn: '', available: true,
 }
 
 interface SaleFormData {
@@ -62,7 +62,7 @@ export default function Admin() {
 
   const openEdit = (product: Product) => {
     setEditing(product)
-    setFormData({ name: product.name, description: product.description, nameEn: product.nameEn ?? '', descriptionEn: product.descriptionEn ?? '', price: product.price, image: product.image, category: product.category, available: product.available })
+    setFormData({ name: product.name, description: product.description, nameEn: product.nameEn ?? '', descriptionEn: product.descriptionEn ?? '', price: product.price, image: product.image, category: product.category, categoryEn: product.categoryEn ?? '', available: product.available })
     setAdding(false)
   }
 
@@ -286,6 +286,10 @@ export default function Admin() {
                       <div>
                         <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldDescriptionEn')}</label>
                         <textarea name="descriptionEn" value={formData.descriptionEn ?? ''} onChange={handleFormChange} rows={3} className={`${inputClass} resize-none`} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldCategoryEn')}</label>
+                        <input name="categoryEn" value={formData.categoryEn ?? ''} onChange={handleFormChange} placeholder={t('admin.fieldCategoryEnPlaceholder')} className={inputClass} />
                       </div>
                     </div>
 

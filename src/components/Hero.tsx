@@ -5,7 +5,7 @@ export default function Hero({ onOrderClick }: { onOrderClick: () => void }) {
   const { t } = useTranslation()
 
   return (
-    <section id="inicio" className="min-h-[90vh] flex items-center justify-center bg-gradient-to-b from-cream-light to-cream px-4 py-20">
+    <section id="inicio" className="min-h-[80vh] flex items-center justify-center bg-gradient-to-b from-cream-light to-cream px-4 pt-10 pb-16">
       <div className="max-w-4xl mx-auto text-center flex flex-col items-center gap-8">
         <img
           src={business.logo}
@@ -20,7 +20,7 @@ export default function Hero({ onOrderClick }: { onOrderClick: () => void }) {
           <p className="text-wine font-medium tracking-[0.25em] text-sm uppercase italic">
             {t('hero.tagline')}
           </p>
-          <p className="text-brown-mid text-lg md:text-xl max-w-xl leading-relaxed">
+          <p className="text-brown-mid text-lg md:text-xl max-w-2xl leading-relaxed">
             {t('hero.description')}
           </p>
         </div>

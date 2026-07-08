@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { Sale } from '../types'
 
 const STATUS_LABEL: Record<Sale['status'], { es: string; en: string }> = {
@@ -12,7 +11,9 @@ const SOURCE_LABEL: Record<Sale['source'], { es: string; en: string }> = {
   manual: { es: 'Manual', en: 'Manual' },
 }
 
-export function exportSalesToExcel(sales: Sale[], isEn = false) {
+export async function exportSalesToExcel(sales: Sale[], isEn = false) {
+  const XLSX = await import('xlsx')
+
   const headers = isEn
     ? ['Date', 'Customer', 'Phone', 'Product', 'Quantity', 'Unit price', 'Total', 'Status', 'Origin', 'Notes']
     : ['Fecha', 'Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio unitario', 'Total', 'Estado', 'Origen', 'Notas']

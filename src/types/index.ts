@@ -7,6 +7,7 @@ export interface Product {
   price: number
   image: string
   category: string
+  categoryEn?: string
   available: boolean
 }
 

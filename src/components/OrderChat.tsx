@@ -199,10 +199,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
           ) : step === 'product' ? (
             <>
               <ChatBubble>
-                {isEn ? '👋 Hi! What would you like to order?' : '👋 ¡Hola! ¿Qué te gustaría encargar?'}
-              </ChatBubble>
-              <ChatBubble delay={300}>
-                {isEn ? 'Add as many products as you need 🍞' : 'Agrega todos los productos que necesites 🍞'}
+                {isEn ? '👋 Hi! What would you like to order? Add as many products as you need' : '👋 ¡Hola! ¿Qué te gustaría encargar? Agrega todos los productos que necesites'}
               </ChatBubble>
 
               <div className="flex flex-col gap-2 mt-2">

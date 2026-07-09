@@ -51,6 +51,12 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     const payload = { ...data, date, approved: false, createdAt: serverTimestamp() }
     const docRef = await addDoc(collection(db, 'reviews'), payload)
     setReviews(prev => [{ ...data, date, approved: false, id: docRef.id }, ...prev])
+
+    fetch('/.netlify/functions/notify-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: data.name, comment: data.comment, rating: data.rating }),
+    }).catch(e => console.error('notify-review request failed:', e))
   }
 
   const approveReview = async (id: string) => {

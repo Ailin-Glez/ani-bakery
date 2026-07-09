@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2 } from 'lucide-react'
+import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2, Mail, Loader2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useSales } from '../context/SalesContext'
-import { business, buildWhatsAppOrderLink, buildOrderMessage, isOrderDateValid } from '../config/business'
+import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput } from '../config/business'
+import type { ContactMethod } from '../types'
 
 interface CartItem {
   product: string
@@ -15,11 +16,12 @@ interface CartItem {
 interface DetailsForm {
   name: string
   phone: string
+  email: string
   date: string
   notes: string
 }
 
-const EMPTY_DETAILS: DetailsForm = { name: '', phone: '', date: '', notes: '' }
+const EMPTY_DETAILS: DetailsForm = { name: '', phone: '', email: '', date: '', notes: '' }
 
 const STEPS = ['product', 'details', 'confirm'] as const
 type Step = typeof STEPS[number]
@@ -58,8 +60,14 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const [customName, setCustomName] = useState('')
   const [addingCustom, setAddingCustom] = useState(false)
   const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
+  const [contactMethod, setContactMethod] = useState<ContactMethod>('phone')
   const [sent, setSent] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState(false)
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const dateInputRef = useRef<HTMLInputElement>(null)
+  const phoneInputRef = useRef<HTMLInputElement>(null)
+  const emailInputRef = useRef<HTMLInputElement>(null)
 
   const isEn = i18n.language === 'en'
   const availableProducts = products.filter(p => p.available)
@@ -77,7 +85,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
     }
   }, [open, initialProduct, products])
 
-  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setCustomName(''); setAddingCustom(false); setStep('product'); setSent(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setContactMethod('phone'); setCustomName(''); setAddingCustom(false); setStep('product'); setSent(false); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
   const addToCart = (p: { name: string; nameEn?: string; price: number }) => {
@@ -115,42 +123,97 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       dateInputRef.current?.setCustomValidity(value && !isOrderDateValid(value) ? t('orders.dateError') : '')
       e.target.reportValidity()
     }
+    if (name === 'name') nameInputRef.current?.setCustomValidity('')
+    if (name === 'email') emailInputRef.current?.setCustomValidity('')
+    if (name === 'phone') {
+      phoneInputRef.current?.setCustomValidity('')
+      setDetails(prev => ({ ...prev, phone: formatUSPhoneInput(value) }))
+      return
+    }
     setDetails(prev => ({ ...prev, [name]: value }))
+  }
+
+  const goToConfirm = () => {
+    if (!details.name.trim()) {
+      nameInputRef.current?.setCustomValidity(t('orders.nameError'))
+      nameInputRef.current?.reportValidity()
+      return
+    }
+    if (!isOrderDateValid(details.date)) {
+      dateInputRef.current?.setCustomValidity(t('orders.dateError'))
+      dateInputRef.current?.reportValidity()
+      return
+    }
+    if (contactMethod === 'phone' && !isValidUSPhone(details.phone)) {
+      phoneInputRef.current?.setCustomValidity(t('orders.phoneError'))
+      phoneInputRef.current?.reportValidity()
+      return
+    }
+    if (contactMethod === 'email' && !isValidEmail(details.email)) {
+      emailInputRef.current?.setCustomValidity(t('orders.emailError'))
+      emailInputRef.current?.reportValidity()
+      return
+    }
+    setStep('confirm')
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
 
-  const sendWhatsApp = () => {
-    const items = cart.map(item => ({
-      product: isEn && item.productEn ? item.productEn : item.product,
-      quantity: item.quantity,
-    }))
-    const message = buildOrderMessage({ ...details, items }, isEn)
-    window.open(buildWhatsAppOrderLink(message), '_blank')
+  const recordSale = () => {
+    const orderId = crypto.randomUUID()
     cart.forEach(item => {
       addSale({
+        orderId,
         customerName: details.name,
-        phone: details.phone,
+        phone: contactMethod === 'phone' ? details.phone : '',
+        email: contactMethod === 'email' ? details.email : '',
+        contactMethod,
         productName: item.product,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         total: item.unitPrice * item.quantity,
         date: details.date,
         notes: details.notes,
-        status: 'pending',
+        status: 'pending_confirmation',
         source: 'web',
+        paid: false,
+        language: isEn ? 'en' : 'es',
       })
     })
+  }
+
+  const submitOrder = async () => {
+    const items = cart.map(item => ({
+      product: isEn && item.productEn ? item.productEn : item.product,
+      quantity: item.quantity,
+    }))
+    const contact = { method: contactMethod, value: contactMethod === 'phone' ? details.phone : details.email }
+
+    if (contactMethod === 'phone') {
+      const message = buildOrderMessage({ name: details.name, contact, items, date: details.date, notes: details.notes }, isEn)
+      window.open(buildWhatsAppOrderLink(message), '_blank')
+      recordSale()
+      setSent(true)
+      return
+    }
+
+    setSending(true)
+    setSendError(false)
+    const body = buildOrderEmailBody({ name: details.name, contact, items, date: details.date, notes: details.notes }, isEn)
+    const subject = isEn ? `Order from ${details.name}` : `Encargo de ${details.name}`
+    const ok = await sendOrderEmail({ subject, message: body, replyTo: details.email, fromName: details.name })
+    setSending(false)
+    if (!ok) {
+      setSendError(true)
+      return
+    }
+    recordSale()
     setSent(true)
   }
 
   const inputClass = 'w-full bg-cream border border-rose rounded-xl px-4 py-2.5 text-brown-dark placeholder-brown-mid/40 focus:outline-none focus:border-wine focus:ring-1 focus:ring-wine/30 transition-colors text-sm'
 
-  const canGoNext = step === 'product'
-    ? cart.length > 0
-    : step === 'details'
-    ? !!details.name && !!details.phone && isOrderDateValid(details.date)
-    : true
+  const canGoNext = step === 'product' ? cart.length > 0 : true
 
   if (!open) return null
 
@@ -191,7 +254,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
             <div className="flex flex-col items-center justify-center flex-1 gap-4 py-10 text-center">
               <div className="text-6xl">🥳</div>
               <p className="font-bold text-brown-dark text-xl">{t('orders.successTitle')}</p>
-              <p className="text-brown-mid text-sm">{t('orders.successText')}</p>
+              <p className="text-brown-mid text-sm">{t(contactMethod === 'phone' ? 'orders.successText' : 'orders.successTextEmail')}</p>
               <button onClick={close} className="btn-primary mt-2 text-sm py-2.5 px-6">
                 {isEn ? 'Close' : 'Cerrar'}
               </button>
@@ -284,12 +347,46 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               <div className="bg-cream-light rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.name')} *</label>
-                  <input name="name" value={details.name} onChange={handleDetailsChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
+                  <input ref={nameInputRef} name="name" value={details.name} onChange={handleDetailsChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.phone')} *</label>
-                  <input name="phone" value={details.phone} onChange={handleDetailsChange} required placeholder={t('orders.phonePlaceholder')} className={inputClass} />
+                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.contactMethodLabel')} *</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setContactMethod('phone')}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        contactMethod === 'phone' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.contactMethodPhone')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContactMethod('email')}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        contactMethod === 'email' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.contactMethodEmail')}
+                    </button>
+                  </div>
                 </div>
+
+                {contactMethod === 'phone' ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.phone')} *</label>
+                    <input ref={phoneInputRef} name="phone" value={details.phone} onChange={handleDetailsChange} required placeholder={t('orders.phonePlaceholder')} className={inputClass} />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.email')} *</label>
+                    <input ref={emailInputRef} type="email" name="email" value={details.email} onChange={handleDetailsChange} required placeholder={t('orders.emailPlaceholder')} className={inputClass} />
+                    <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.emailPriorityNote')}</p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
                   <input ref={dateInputRef} type="date" name="date" value={details.date} onChange={handleDetailsChange} required className={inputClass} />
@@ -324,7 +421,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                 {[
                   { icon: '📅', label: t('orders.date'), value: details.date },
                   { icon: '👤', label: t('orders.name'), value: details.name },
-                  { icon: '📱', label: t('orders.phone'), value: details.phone },
+                  contactMethod === 'phone'
+                    ? { icon: '📱', label: t('orders.phone'), value: details.phone }
+                    : { icon: '📧', label: t('orders.email'), value: details.email },
                   ...(details.notes ? [{ icon: '📝', label: t('orders.notes'), value: details.notes }] : []),
                 ].map(row => (
                   <div key={row.label} className="flex gap-2">
@@ -336,9 +435,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </div>
 
               <ChatBubble delay={200}>
-                {isEn
-                  ? 'I\'ll send you a WhatsApp to confirm! 💬'
-                  : '¡Te envío un WhatsApp para confirmar! 💬'}
+                {contactMethod === 'phone'
+                  ? (isEn ? 'I\'ll send you a WhatsApp to confirm! 💬' : '¡Te envío un WhatsApp para confirmar! 💬')
+                  : (isEn ? 'I\'ll reply to your email to confirm — replies may take a bit longer than WhatsApp! 📧' : '¡Te respondo al email para confirmar — puede tardar un poco más que por WhatsApp! 📧')}
               </ChatBubble>
             </>
           )}
@@ -346,7 +445,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
         {/* Footer nav */}
         {!sent && (
-          <div className="bg-cream-light border-t border-rose px-4 py-3 flex gap-3 flex-shrink-0">
+          <div className="bg-cream-light border-t border-rose px-4 py-3 flex flex-col gap-2 flex-shrink-0">
+            {sendError && <p className="text-xs font-semibold text-burgundy">{t('orders.emailSendError')}</p>}
+            <div className="flex gap-3">
             {step !== 'product' && (
               <button
                 onClick={() => setStep(step === 'confirm' ? 'details' : 'product')}
@@ -357,7 +458,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
             )}
             {step !== 'confirm' ? (
               <button
-                onClick={() => setStep(step === 'product' ? 'details' : 'confirm')}
+                onClick={() => step === 'product' ? setStep('details') : goToConfirm()}
                 disabled={!canGoNext}
                 className="flex-1 btn-primary text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -365,12 +466,19 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </button>
             ) : (
               <button
-                onClick={sendWhatsApp}
-                className="flex-1 bg-[#25D366] hover:bg-[#1ebe5d] text-white font-bold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                onClick={submitOrder}
+                disabled={sending}
+                className={`flex-1 text-white font-bold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                  contactMethod === 'phone' ? 'bg-[#25D366] hover:bg-[#1ebe5d]' : 'bg-wine hover:bg-wine-dark'
+                }`}
               >
-                <Send size={16} /> {t('orders.submit')}
+                {sending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : contactMethod === 'phone' ? <Send size={16} /> : <Mail size={16} />}
+                {sending ? (isEn ? 'Sending…' : 'Enviando…') : contactMethod === 'phone' ? t('orders.submit') : t('orders.submitEmail')}
               </button>
             )}
+            </div>
           </div>
         )}
       </div>

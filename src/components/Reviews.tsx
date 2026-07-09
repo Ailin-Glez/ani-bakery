@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Star, Camera, X, ZoomIn } from 'lucide-react'
+import { Star, Camera, X, ZoomIn, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useReviews } from '../context/ReviewContext'
 import type { Review } from '../context/ReviewContext'
+
+const DESKTOP_PAGE_SIZE = 6
 
 function StarRating({ rating, interactive = false, onChange }: {
   rating: number
@@ -88,6 +90,31 @@ function PhotoLightbox({ review, onClose }: { review: Review; onClose: () => voi
   )
 }
 
+function ReviewCard({ review, onZoom, seeMoreLabel }: { review: Review; onZoom: () => void; seeMoreLabel: string }) {
+  return (
+    <div className="bg-cream-light rounded-2xl overflow-hidden shadow-md flex flex-col border border-rose h-full">
+      <div className="p-6 flex flex-col gap-3 flex-1">
+        <StarRating rating={review.rating} />
+        <p className="text-brown-mid leading-relaxed italic flex-1 line-clamp-4">"{review.comment}"</p>
+        <div className="flex items-center justify-between pt-3 border-t border-rose mt-auto">
+          <span className="font-bold text-brown-dark">{review.name}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-brown-mid">{review.date}</span>
+            {review.image && (
+              <button
+                onClick={onZoom}
+                className="flex items-center gap-1 text-xs text-wine hover:text-wine-dark font-semibold transition-colors"
+              >
+                <ZoomIn size={13} /> {seeMoreLabel}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Reviews() {
   const { t } = useTranslation()
   const { approvedReviews, submitReview } = useReviews()
@@ -101,7 +128,28 @@ export default function Reviews() {
   const [submitted, setSubmitted] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [desktopPage, setDesktopPage] = useState(0)
+  const [mobileIndex, setMobileIndex] = useState(0)
+  const mobileScrollRef = useRef<HTMLDivElement>(null)
+
   const ratingLabels: string[] = t('reviews.ratingLabels', { returnObjects: true }) as string[]
+
+  const totalPages = Math.ceil(approvedReviews.length / DESKTOP_PAGE_SIZE)
+  const desktopPageItems = approvedReviews.slice(desktopPage * DESKTOP_PAGE_SIZE, desktopPage * DESKTOP_PAGE_SIZE + DESKTOP_PAGE_SIZE)
+
+  const handleMobileScroll = () => {
+    const el = mobileScrollRef.current
+    if (!el || approvedReviews.length === 0) return
+    const cardWidth = el.scrollWidth / approvedReviews.length
+    setMobileIndex(Math.round(el.scrollLeft / cardWidth))
+  }
+
+  const scrollToMobileIndex = (i: number) => {
+    const el = mobileScrollRef.current
+    if (!el) return
+    const cardWidth = el.scrollWidth / approvedReviews.length
+    el.scrollTo({ left: cardWidth * i, behavior: 'smooth' })
+  }
 
   const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -139,30 +187,71 @@ export default function Reviews() {
         {lightbox && <PhotoLightbox review={lightbox} onClose={() => setLightbox(null)} />}
 
         {approvedReviews.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            {approvedReviews.map(review => (
-              <div key={review.id} className="bg-cream-light rounded-2xl overflow-hidden shadow-md flex flex-col border border-rose">
-                <div className="p-6 flex flex-col gap-3 flex-1">
-                  <StarRating rating={review.rating} />
-                  <p className="text-brown-mid leading-relaxed italic flex-1 line-clamp-4">"{review.comment}"</p>
-                  <div className="flex items-center justify-between pt-3 border-t border-rose mt-auto">
-                    <span className="font-bold text-brown-dark">{review.name}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-brown-mid">{review.date}</span>
-                      {review.image && (
-                        <button
-                          onClick={() => setLightbox(review)}
-                          className="flex items-center gap-1 text-xs text-wine hover:text-wine-dark font-semibold transition-colors"
-                        >
-                          <ZoomIn size={13} /> {t('reviews.seeMore')}
-                        </button>
-                      )}
-                    </div>
+          <>
+            {/* Mobile: swipeable carousel, one card at a time */}
+            <div className="md:hidden mb-12">
+              <div
+                ref={mobileScrollRef}
+                onScroll={handleMobileScroll}
+                className="flex overflow-x-auto snap-x snap-mandatory gap-4 -mx-4 px-4 pb-1 scrollbar-hide"
+              >
+                {approvedReviews.map(review => (
+                  <div key={review.id} className="snap-center shrink-0 w-[88%]">
+                    <ReviewCard review={review} onZoom={() => setLightbox(review)} seeMoreLabel={t('reviews.seeMore')} />
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+              {approvedReviews.length > 1 && (
+                <div className="flex justify-center gap-1.5 mt-4">
+                  {approvedReviews.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => scrollToMobileIndex(i)}
+                      aria-label={`${i + 1}`}
+                      className={`h-1.5 rounded-full transition-all ${i === mobileIndex ? 'w-5 bg-wine' : 'w-1.5 bg-rose'}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Desktop: paginated grid, 2 rows of 3 */}
+            <div className="hidden md:block mb-12">
+              <div className="grid grid-cols-3 gap-6">
+                {desktopPageItems.map(review => (
+                  <ReviewCard key={review.id} review={review} onZoom={() => setLightbox(review)} seeMoreLabel={t('reviews.seeMore')} />
+                ))}
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 mt-6">
+                  <button
+                    onClick={() => setDesktopPage(p => Math.max(0, p - 1))}
+                    disabled={desktopPage === 0}
+                    className="text-brown-mid hover:text-wine disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                  <div className="flex gap-1.5">
+                    {Array.from({ length: totalPages }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setDesktopPage(i)}
+                        aria-label={`${i + 1}`}
+                        className={`h-2 rounded-full transition-all ${i === desktopPage ? 'w-6 bg-wine' : 'w-2 bg-rose'}`}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setDesktopPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={desktopPage === totalPages - 1}
+                    className="text-brown-mid hover:text-wine disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={22} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <div className="text-center py-10 text-brown-mid mb-12">
             <p className="text-5xl mb-3">🌟</p>

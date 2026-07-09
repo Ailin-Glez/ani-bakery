@@ -14,10 +14,44 @@ export const business = {
   logo: '/ana-logo.jpeg',
   bakerName: 'Anabel Rodríguez',
   bakerPhoto: '/anabel.jpeg',
+  email: 'ailinglez89@gmail.com',
 }
 
 export function buildWhatsAppOrderLink(message: string) {
   return `${business.phone.whatsappLink}?text=${encodeURIComponent(message)}`
+}
+
+export function buildWhatsAppLinkTo(phone: string, message: string) {
+  const digits = phone.replace(/\D/g, '')
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+}
+
+export function isValidUSPhone(phone: string) {
+  const digits = phone.replace(/\D/g, '').replace(/^1/, '')
+  return /^[2-9]\d{9}$/.test(digits)
+}
+
+export function formatUSPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, '').replace(/^1/, '').slice(0, 10)
+  if (digits.length === 0) return ''
+  if (digits.length < 4) return `(${digits}`
+  if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+}
+
+export function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
+export async function sendOrderEmail(params: { subject: string; message: string; replyTo?: string; fromName?: string; to?: string }) {
+  const response = await fetch('/.netlify/functions/send-order-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) return false
+  const data = await response.json()
+  return data.success === true
 }
 
 export const ORDER_MIN_LEAD_DAYS = 2
@@ -44,9 +78,14 @@ interface OrderItem {
   quantity: number
 }
 
+interface OrderContact {
+  method: 'phone' | 'email'
+  value: string
+}
+
 interface OrderMessageData {
   name: string
-  phone: string
+  contact: OrderContact
   items: OrderItem[]
   date: string
   notes: string
@@ -54,12 +93,13 @@ interface OrderMessageData {
 
 export function buildOrderMessage(form: OrderMessageData, isEn: boolean) {
   const itemLines = form.items.map(i => `• ${i.product} x${i.quantity}`)
+  const contactLabel = form.contact.method === 'phone' ? (isEn ? 'Phone' : 'Teléfono') : 'Email'
   const lines = isEn
     ? [
         `Hi Ani! I'd like to place an order`,
         '',
         `*Name:* ${form.name}`,
-        `*Phone:* ${form.phone}`,
+        `*${contactLabel}:* ${form.contact.value}`,
         `*Products:*`,
         ...itemLines,
         `*Desired date:* ${form.date}`,
@@ -71,13 +111,80 @@ export function buildOrderMessage(form: OrderMessageData, isEn: boolean) {
         `¡Hola Ani! Quiero hacer un encargo`,
         '',
         `*Nombre:* ${form.name}`,
-        `*Teléfono:* ${form.phone}`,
+        `*${contactLabel}:* ${form.contact.value}`,
         `*Productos:*`,
         ...itemLines,
         `*Fecha deseada:* ${form.date}`,
         ...(form.notes ? [`*Notas:* ${form.notes}`] : []),
         '',
         '¡Gracias!',
+      ]
+  return lines.join('\n')
+}
+
+export function buildOrderEmailBody(form: OrderMessageData, isEn: boolean) {
+  const itemLines = form.items.map(i => `- ${i.product} x${i.quantity}`)
+  const lines = isEn
+    ? [
+        `Hi Ani! I'd like to place an order`,
+        '',
+        `Name: ${form.name}`,
+        `Email: ${form.contact.value}`,
+        `Products:`,
+        ...itemLines,
+        `Desired date: ${form.date}`,
+        ...(form.notes ? [`Notes: ${form.notes}`] : []),
+        '',
+        `Note: this order was sent by email, response time may be longer than WhatsApp.`,
+        '',
+        'Thank you!',
+      ]
+    : [
+        `¡Hola Ani! Quiero hacer un encargo`,
+        '',
+        `Nombre: ${form.name}`,
+        `Email: ${form.contact.value}`,
+        `Productos:`,
+        ...itemLines,
+        `Fecha deseada: ${form.date}`,
+        ...(form.notes ? [`Notas: ${form.notes}`] : []),
+        '',
+        `Nota: este pedido se envió por email, el tiempo de respuesta puede ser mayor que por WhatsApp.`,
+        '',
+        '¡Gracias!',
+      ]
+  return lines.join('\n')
+}
+
+interface PaymentConfirmationData {
+  name: string
+  items: OrderItem[]
+  total: number
+  date: string
+}
+
+export function buildPaymentConfirmationMessage(form: PaymentConfirmationData, isEn: boolean) {
+  const itemLines = form.items.map(i => `• ${i.product} x${i.quantity}`)
+  const lines = isEn
+    ? [
+        `Hi ${form.name}! Payment received, thank you!`,
+        '',
+        `*Your order:*`,
+        ...itemLines,
+        `*Total paid:* $${form.total.toFixed(2)}`,
+        `*Delivery date:* ${form.date}`,
+        '',
+        'See you soon!',
+      ]
+    : [
+        `¡Hola ${form.name}! Pago recibido, ¡gracias!`,
+        '',
+        `*Tu pedido:*`,
+        ...itemLines,
+        `*Total pagado:* $${form.total.toFixed(2)}`,
+        `*Fecha de entrega:* ${form.date}`,
+        '',
+        '¡Nos vemos pronto!',
       ]
   return lines.join('\n')
 }

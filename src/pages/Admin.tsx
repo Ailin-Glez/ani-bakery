@@ -1,11 +1,14 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useProducts } from '../context/ProductContext'
 import { useReviews } from '../context/ReviewContext'
 import { useSales } from '../context/SalesContext'
 import { exportSalesToExcel } from '../lib/exportSales'
-import type { Product, SaleStatus } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays } from 'lucide-react'
+import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, sendOrderEmail } from '../config/business'
+import type { Product, Sale, SaleStatus, PaymentMethod } from '../types'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
@@ -25,21 +28,45 @@ interface SaleFormData {
 }
 
 const EMPTY_SALE: SaleFormData = {
-  customerName: '', phone: '', productName: '', quantity: 1, unitPrice: 0, date: '', notes: '', status: 'pending',
+  customerName: '', phone: '', productName: '', quantity: 1, unitPrice: 0, date: '', notes: '', status: 'pending_confirmation',
+}
+
+const ORDER_STEPS = ['pending_confirmation', 'pending_payment', 'in_progress', 'delivered'] as const satisfies readonly SaleStatus[]
+const STEP_LABEL_KEY: Record<typeof ORDER_STEPS[number], string> = {
+  pending_confirmation: 'salesStepConfirmation',
+  pending_payment: 'salesStepPayment',
+  in_progress: 'salesStepInProgress',
+  delivered: 'salesStepDelivered',
+}
+const STEP_COLOR: Record<typeof ORDER_STEPS[number], { dot: string; dotDone: string; ring: string; text: string; textDone: string; line: string }> = {
+  pending_confirmation: { dot: 'bg-amber-500', dotDone: 'bg-amber-200', ring: 'ring-amber-500/30', text: 'text-amber-600', textDone: 'text-amber-400', line: 'bg-amber-200' },
+  pending_payment: { dot: 'bg-blue-500', dotDone: 'bg-blue-200', ring: 'ring-blue-500/30', text: 'text-blue-600', textDone: 'text-blue-400', line: 'bg-blue-200' },
+  in_progress: { dot: 'bg-purple-500', dotDone: 'bg-purple-200', ring: 'ring-purple-500/30', text: 'text-purple-600', textDone: 'text-purple-400', line: 'bg-purple-200' },
+  delivered: { dot: 'bg-green-500', dotDone: 'bg-green-200', ring: 'ring-green-500/30', text: 'text-green-600', textDone: 'text-green-400', line: 'bg-green-200' },
 }
 
 type Tab = 'products' | 'sales' | 'reviews'
 type ReviewTab = 'pending' | 'approved'
 type SalesFilter = 'all' | SaleStatus
+type SalesSort = 'deliveryAsc' | 'deliveryDesc' | 'receivedDesc' | 'receivedAsc'
+
+const SALES_SORT_LABEL: Record<SalesSort, string> = {
+  deliveryAsc: 'Entrega más próxima primero',
+  deliveryDesc: 'Entrega más lejana primero',
+  receivedDesc: 'Recibidas más recientes primero',
+  receivedAsc: 'Recibidas más antiguas primero',
+}
 
 export default function Admin() {
-  const { t, i18n } = useTranslation()
+  const { i18n } = useTranslation()
+  // Admin panel always renders in Spanish, independent of the public site's language toggle.
+  const t = i18n.getFixedT('es')
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin-authed') === '1')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<Tab>('products')
-  const [reviewTab, setReviewTab] = useState<ReviewTab>('pending')
+  const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem('admin-tab') as Tab) || 'products')
+  const [reviewTab, setReviewTab] = useState<ReviewTab>(() => (sessionStorage.getItem('admin-review-tab') as ReviewTab) || 'pending')
   const [editing, setEditing] = useState<Product | null>(null)
   const [adding, setAdding] = useState(false)
   const [formData, setFormData] = useState<Omit<Product, 'id'>>(EMPTY_PRODUCT)
@@ -49,10 +76,15 @@ export default function Admin() {
   const [addingSale, setAddingSale] = useState(false)
   const [saleForm, setSaleForm] = useState<SaleFormData>(EMPTY_SALE)
   const [salesFilter, setSalesFilter] = useState<SalesFilter>('all')
+  const [salesSort, setSalesSort] = useState<SalesSort>(() => (sessionStorage.getItem('admin-sales-sort') as SalesSort) || 'deliveryAsc')
 
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct } = useProducts()
   const { pendingReviews, approvedReviews, loading: reviewsLoading, approveReview, rejectReview, deleteReview } = useReviews()
-  const { sales, loading: salesLoading, addSale, updateSaleStatus, deleteSale } = useSales()
+  const { sales, loading: salesLoading, addSale, confirmOrder, cancelOrder, markDelivered, markOrderPaid, deleteSale } = useSales()
+
+  const selectTab = (next: Tab) => { sessionStorage.setItem('admin-tab', next); setTab(next) }
+  const selectReviewTab = (next: ReviewTab) => { sessionStorage.setItem('admin-review-tab', next); setReviewTab(next) }
+  const selectSalesSort = (next: SalesSort) => { sessionStorage.setItem('admin-sales-sort', next); setSalesSort(next) }
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
@@ -136,8 +168,10 @@ export default function Admin() {
   const handleSaleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     await addSale({
+      orderId: crypto.randomUUID(),
       customerName: saleForm.customerName,
       phone: saleForm.phone,
+      contactMethod: 'phone',
       productName: saleForm.productName,
       quantity: saleForm.quantity,
       unitPrice: saleForm.unitPrice,
@@ -146,6 +180,8 @@ export default function Admin() {
       notes: saleForm.notes,
       status: saleForm.status,
       source: 'manual',
+      paid: false,
+      language: 'es',
     })
     closeSaleModal()
   }
@@ -166,10 +202,183 @@ export default function Admin() {
     }
   }, [sales])
 
-  const statusBadgeClass: Record<SaleStatus, string> = {
-    pending: 'bg-amber-100 text-amber-700',
-    completed: 'bg-green-100 text-green-700',
-    cancelled: 'bg-rose-light text-wine',
+  const statusLabelKey: Record<SaleStatus, string> = {
+    pending_confirmation: 'salesStatusPendingConfirmation',
+    pending_payment: 'salesStatusPendingPayment',
+    in_progress: 'salesStatusInProgress',
+    delivered: 'salesStatusDelivered',
+    cancelled: 'salesStatusCancelled',
+  }
+
+  const sendPaymentConfirmation = async (sale: Sale) => {
+    // Uses the language the customer had selected when they placed the order (saved on the
+    // sale record), not Ana's current site language — those are unrelated.
+    const lang = sale.language || 'es'
+    const items = [{ product: sale.productName, quantity: sale.quantity }]
+    const message = buildPaymentConfirmationMessage({ name: sale.customerName, items, total: sale.total, date: sale.date }, lang === 'en')
+    if (sale.contactMethod === 'email' && sale.email) {
+      const subject = i18n.getFixedT(lang)('admin.paymentConfirmationSubject')
+      await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name })
+    } else {
+      window.open(buildWhatsAppLinkTo(sale.phone, message), '_blank')
+    }
+  }
+
+  const handleMarkPaid = async (sale: Sale, method: PaymentMethod) => {
+    await markOrderPaid(sale, method)
+    sendPaymentConfirmation(sale)
+  }
+
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; tone?: 'default' | 'danger'; onConfirm: () => void } | null>(null)
+
+  const handleConfirmOrder = (sale: Sale) => {
+    setConfirmDialog({ message: t('admin.confirmOrderConfirm'), onConfirm: () => { confirmOrder(sale); setConfirmDialog(null) } })
+  }
+
+  const handleCancelOrder = (sale: Sale) => {
+    setConfirmDialog({ message: t('admin.cancelOrderConfirm'), tone: 'danger', onConfirm: () => { cancelOrder(sale); setConfirmDialog(null) } })
+  }
+
+  const handleMarkDelivered = (sale: Sale) => {
+    setConfirmDialog({ message: t('admin.markDeliveredConfirm'), onConfirm: () => { markDelivered(sale); setConfirmDialog(null) } })
+  }
+
+  const handleDeleteProduct = (product: Product) => {
+    setConfirmDialog({ message: `${t('admin.delete')} "${product.name}"?`, tone: 'danger', onConfirm: () => { deleteProduct(product.id); setConfirmDialog(null) } })
+  }
+
+  const handleDeleteSale = (sale: Sale) => {
+    setConfirmDialog({ message: `${t('admin.delete')}?`, tone: 'danger', onConfirm: () => { deleteSale(sale); setConfirmDialog(null) } })
+  }
+
+  const sortedSales = useMemo(() => {
+    const sorted = [...filteredSales]
+    sorted.sort((a, b) => {
+      switch (salesSort) {
+        case 'deliveryAsc': return a.date.localeCompare(b.date)
+        case 'deliveryDesc': return b.date.localeCompare(a.date)
+        case 'receivedAsc': return a.createdAt.localeCompare(b.createdAt)
+        case 'receivedDesc': return b.createdAt.localeCompare(a.createdAt)
+      }
+    })
+    return sorted
+  }, [filteredSales, salesSort])
+
+  const groupedSales = useMemo(() => {
+    const groups = new Map<string, Sale[]>()
+    sortedSales.forEach(sale => {
+      const key = sale.orderId || sale.id
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(sale)
+    })
+    return Array.from(groups.values())
+  }, [sortedSales])
+
+  const renderStepper = (sale: Sale) => {
+    const status = normalizeSaleStatus(sale.status)
+    const stepIndex = (ORDER_STEPS as readonly SaleStatus[]).indexOf(status)
+    if (status === 'cancelled') {
+      return (
+        <div className="flex items-center gap-2 text-sm font-semibold text-wine bg-rose-light px-3 py-2 rounded-xl w-fit">
+          <Ban size={14} /> {t('admin.salesStatusCancelled')}
+        </div>
+      )
+    }
+    return (
+      <div className="flex items-start">
+        {ORDER_STEPS.map((step, i) => {
+          const isDone = i < stepIndex
+          const isCurrent = i === stepIndex
+          const color = STEP_COLOR[step]
+          return (
+            <Fragment key={step}>
+              <div className="flex flex-col items-center gap-1">
+                <div className={`w-3.5 h-3.5 rounded-full flex-shrink-0 transition-all ${
+                  isCurrent ? `${color.dot} ring-4 ${color.ring} scale-110` : isDone ? color.dotDone : 'bg-rose'
+                }`} />
+                <span className={`text-[10px] leading-tight text-center w-16 ${
+                  isCurrent ? `font-bold ${color.text}` : isDone ? `font-medium ${color.textDone}` : 'font-semibold text-brown-light'
+                }`}>
+                  {t(`admin.${STEP_LABEL_KEY[step]}`)}
+                </span>
+              </div>
+              {i < ORDER_STEPS.length - 1 && (
+                <div className={`flex-1 h-0.5 mt-1.5 ${i < stepIndex ? color.line : 'bg-rose'}`} />
+              )}
+            </Fragment>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const renderSaleActions = (sale: Sale) => {
+    const status = normalizeSaleStatus(sale.status)
+    return (
+      <div className="flex sm:flex-col gap-2 flex-shrink-0">
+        {status === 'pending_confirmation' && (
+          <>
+            <button onClick={() => handleConfirmOrder(sale)} className="flex items-center gap-1.5 text-sm text-green-700 transition-colors bg-green-100 hover:bg-green-200 px-3 py-2 rounded-xl">
+              <Check size={14} /> {t('admin.confirmOrder')}
+            </button>
+            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
+              <Ban size={14} /> {t('admin.rejectOrder')}
+            </button>
+          </>
+        )}
+        {status === 'pending_payment' && (
+          <>
+            <select
+              value=""
+              onChange={e => { if (e.target.value) handleMarkPaid(sale, e.target.value as PaymentMethod) }}
+              className="text-xs font-semibold px-3 py-2 rounded-xl border-0 cursor-pointer bg-amber-100 text-amber-700"
+            >
+              <option value="">{t('admin.markPaid')}</option>
+              <option value="zelle">{t('admin.paymentMethodZelle')}</option>
+              <option value="cash">{t('admin.paymentMethodCash')}</option>
+              <option value="other">{t('admin.paymentMethodOther')}</option>
+            </select>
+            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
+              <Ban size={14} /> {t('admin.cancelOrder')}
+            </button>
+          </>
+        )}
+        {status === 'in_progress' && (
+          <>
+            <button onClick={() => handleMarkDelivered(sale)} className="flex items-center gap-1.5 text-sm text-green-700 transition-colors bg-green-100 hover:bg-green-200 px-3 py-2 rounded-xl">
+              <Package size={14} /> {t('admin.markDelivered')}
+            </button>
+            <button onClick={() => sendPaymentConfirmation(sale)} className="flex items-center gap-1.5 text-sm text-brown-mid transition-colors bg-beige-light hover:bg-rose-light px-3 py-2 rounded-xl">
+              <Send size={14} /> {t('admin.resendConfirmation')}
+            </button>
+          </>
+        )}
+        {status === 'delivered' && (
+          <button onClick={() => sendPaymentConfirmation(sale)} className="flex items-center gap-1.5 text-sm text-brown-mid transition-colors bg-beige-light hover:bg-rose-light px-3 py-2 rounded-xl">
+            <Send size={14} /> {t('admin.resendConfirmation')}
+          </button>
+        )}
+        <button
+          onClick={() => { if (!sale.paid) handleDeleteSale(sale) }}
+          disabled={sale.paid}
+          title={sale.paid ? t('admin.cannotDeletePaid') : undefined}
+          className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-light"
+        >
+          <Trash2 size={14} /> {t('admin.delete')}
+        </button>
+      </div>
+    )
+  }
+
+  const renderPaidBadge = (sale: Sale) => sale.paid && (
+    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+      <CheckCircle2 size={12} />
+      {t('admin.paid')}{sale.paymentMethod && ` · ${t(`admin.paymentMethod${sale.paymentMethod.charAt(0).toUpperCase()}${sale.paymentMethod.slice(1)}`)}`}
+    </span>
+  )
+
+  const handleDeleteReview = (reviewId: string) => {
+    setConfirmDialog({ message: `${t('admin.deleteReview')}?`, tone: 'danger', onConfirm: () => { deleteReview(reviewId); setConfirmDialog(null) } })
   }
 
   // ── Login ──
@@ -229,7 +438,7 @@ export default function Admin() {
           {(['products', 'sales', 'reviews'] as Tab[]).map(tabKey => (
             <button
               key={tabKey}
-              onClick={() => setTab(tabKey)}
+              onClick={() => selectTab(tabKey)}
               className={`px-6 py-3.5 text-sm font-semibold border-b-2 transition-colors ${
                 tab === tabKey ? 'border-wine text-wine' : 'border-transparent text-brown-mid hover:text-brown-dark'
               }`}
@@ -405,7 +614,7 @@ export default function Admin() {
                       <button onClick={() => openEdit(product)} className="flex items-center gap-1.5 text-sm text-brown-mid hover:text-wine transition-colors bg-beige-light hover:bg-rose-light px-3 py-2 rounded-xl">
                         <Pencil size={14} /> {t('admin.edit')}
                       </button>
-                      <button onClick={() => { if (confirm(`${t('admin.delete')} "${product.name}"?`)) deleteProduct(product.id) }} className="flex items-center gap-1.5 text-sm text-wine transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
+                      <button onClick={() => handleDeleteProduct(product)} className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
                         <Trash2 size={14} /> {t('admin.delete')}
                       </button>
                     </div>
@@ -452,7 +661,7 @@ export default function Admin() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div className="flex gap-2 flex-wrap">
-                {(['all', 'pending', 'completed', 'cancelled'] as SalesFilter[]).map(f => (
+                {(['all', ...SALE_STATUSES] as SalesFilter[]).map(f => (
                   <button
                     key={f}
                     onClick={() => setSalesFilter(f)}
@@ -460,13 +669,22 @@ export default function Admin() {
                       salesFilter === f ? 'bg-brown-dark text-cream-light' : 'bg-rose-light text-brown-mid hover:bg-rose'
                     }`}
                   >
-                    {t(`admin.salesStatus${f.charAt(0).toUpperCase() + f.slice(1)}`)}
+                    {f === 'all' ? t('admin.salesStatusAll') : t(`admin.${statusLabelKey[f]}`)}
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <select
+                  value={salesSort}
+                  onChange={e => selectSalesSort(e.target.value as SalesSort)}
+                  className="text-sm font-medium px-3 py-2 rounded-xl border border-rose bg-cream-light text-brown-dark cursor-pointer"
+                >
+                  {(Object.keys(SALES_SORT_LABEL) as SalesSort[]).map(s => (
+                    <option key={s} value={s}>{SALES_SORT_LABEL[s]}</option>
+                  ))}
+                </select>
                 <button
-                  onClick={() => exportSalesToExcel(filteredSales, i18n.language === 'en')}
+                  onClick={() => exportSalesToExcel(sortedSales, false)}
                   disabled={filteredSales.length === 0}
                   className="btn-secondary flex items-center gap-2 py-2.5 px-5 text-sm disabled:opacity-50"
                 >
@@ -538,9 +756,9 @@ export default function Admin() {
                       <div>
                         <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldStatus')}</label>
                         <select name="status" value={saleForm.status} onChange={handleSaleFieldChange} className={inputClass}>
-                          <option value="pending">{t('admin.salesStatusPending')}</option>
-                          <option value="completed">{t('admin.salesStatusCompleted')}</option>
-                          <option value="cancelled">{t('admin.salesStatusCancelled')}</option>
+                          {SALE_STATUSES.map(s => (
+                            <option key={s} value={s}>{t(`admin.${statusLabelKey[s]}`)}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -563,41 +781,89 @@ export default function Admin() {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {filteredSales.map(sale => (
-                  <div key={sale.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col sm:flex-row gap-4 sm:items-center shadow-sm">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-bold text-brown-dark">{sale.customerName}</h3>
-                          <p className="text-xs text-wine font-medium">{sale.productName} × {sale.quantity}</p>
+                {groupedSales.map(group => {
+                  const first = group[0]
+                  if (group.length === 1) {
+                    const sale = first
+                    return (
+                      <div key={sale.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
+                        {renderStepper(sale)}
+                        <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h3 className="font-bold text-brown-dark">{sale.customerName}</h3>
+                                <p className="text-xs text-wine font-medium">{sale.productName} × {sale.quantity}</p>
+                              </div>
+                              <span className="text-lg font-bold text-wine flex-shrink-0">${sale.total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <span className="text-xs text-brown-mid">{sale.date}</span>
+                              {sale.phone && <span className="text-xs text-brown-mid">· {sale.phone}</span>}
+                              {sale.email && <span className="text-xs text-brown-mid">· {sale.email}</span>}
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sale.source === 'web' ? 'bg-blue-100 text-blue-700' : 'bg-beige-light text-brown-mid'}`}>
+                                {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
+                              </span>
+                              {sale.source === 'web' && (
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${sale.contactMethod === 'email' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                  {sale.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
+                                  {sale.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
+                                </span>
+                              )}
+                              {renderPaidBadge(sale)}
+                            </div>
+                            {sale.notes && <p className="text-brown-mid text-xs mt-1.5 italic">"{sale.notes}"</p>}
+                          </div>
+                          {renderSaleActions(sale)}
                         </div>
-                        <span className="text-lg font-bold text-wine flex-shrink-0">${sale.total.toFixed(2)}</span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <span className="text-xs text-brown-mid">{sale.date}</span>
-                        {sale.phone && <span className="text-xs text-brown-mid">· {sale.phone}</span>}
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sale.source === 'web' ? 'bg-blue-100 text-blue-700' : 'bg-beige-light text-brown-mid'}`}>
-                          {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
-                        </span>
+                    )
+                  }
+                  const groupTotal = group.reduce((sum, s) => sum + s.total, 0)
+                  return (
+                    <div key={first.orderId} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-2 pb-3 border-b border-rose/60">
+                        <div>
+                          <h3 className="font-bold text-brown-dark">{first.customerName}</h3>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className="text-xs text-brown-mid">{first.date}</span>
+                            {first.phone && <span className="text-xs text-brown-mid">· {first.phone}</span>}
+                            {first.email && <span className="text-xs text-brown-mid">· {first.email}</span>}
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${first.source === 'web' ? 'bg-blue-100 text-blue-700' : 'bg-beige-light text-brown-mid'}`}>
+                              {first.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
+                            </span>
+                            {first.source === 'web' && (
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${first.contactMethod === 'email' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {first.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
+                                {first.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
+                              </span>
+                            )}
+                          </div>
+                          {first.notes && <p className="text-brown-mid text-xs mt-1.5 italic">"{first.notes}"</p>}
+                        </div>
+                        <span className="text-lg font-bold text-wine flex-shrink-0">${groupTotal.toFixed(2)}</span>
                       </div>
-                      {sale.notes && <p className="text-brown-mid text-xs mt-1.5 italic">"{sale.notes}"</p>}
+
+                      <div className="flex flex-col gap-3">
+                        {group.map(sale => (
+                          <div key={sale.id} className="flex flex-col gap-3 bg-cream/70 rounded-xl p-3 border border-rose/40">
+                            {renderStepper(sale)}
+                            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-semibold text-brown-dark">{sale.productName} × {sale.quantity}</p>
+                                  <span className="text-sm font-bold text-wine">${sale.total.toFixed(2)}</span>
+                                </div>
+                                {renderPaidBadge(sale)}
+                              </div>
+                              {renderSaleActions(sale)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex sm:flex-col gap-2 flex-shrink-0">
-                      <select
-                        value={sale.status}
-                        onChange={e => updateSaleStatus(sale.id, e.target.value as SaleStatus)}
-                        className={`text-xs font-semibold px-3 py-2 rounded-xl border-0 cursor-pointer ${statusBadgeClass[sale.status]}`}
-                      >
-                        <option value="pending">{t('admin.salesStatusPending')}</option>
-                        <option value="completed">{t('admin.salesStatusCompleted')}</option>
-                        <option value="cancelled">{t('admin.salesStatusCancelled')}</option>
-                      </select>
-                      <button onClick={() => { if (confirm(`${t('admin.delete')}?`)) deleteSale(sale.id) }} className="flex items-center gap-1.5 text-sm text-wine transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
-                        <Trash2 size={14} /> {t('admin.delete')}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
                 {filteredSales.length === 0 && (
                   <div className="text-center py-20 text-brown-mid">
                     <p className="text-6xl mb-4">🧾</p>
@@ -617,7 +883,7 @@ export default function Admin() {
               {(['pending', 'approved'] as ReviewTab[]).map(rt => (
                 <button
                   key={rt}
-                  onClick={() => setReviewTab(rt)}
+                  onClick={() => selectReviewTab(rt)}
                   className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
                     reviewTab === rt ? 'bg-brown-dark text-cream-light' : 'bg-rose-light text-brown-mid hover:bg-rose'
                   }`}
@@ -699,7 +965,7 @@ export default function Admin() {
                         </div>
                         <p className="text-brown-mid text-sm italic">"{review.comment}"</p>
                       </div>
-                      <button onClick={() => { if (confirm(t('admin.deleteReview') + '?')) deleteReview(review.id) }} className="text-wine/50 hover:text-wine flex-shrink-0 p-1">
+                      <button onClick={() => handleDeleteReview(review.id)} className="text-burgundy/50 hover:text-burgundy flex-shrink-0 p-1">
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -710,6 +976,15 @@ export default function Admin() {
           </>
         )}
       </div>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          message={confirmDialog.message}
+          tone={confirmDialog.tone}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   )
 }

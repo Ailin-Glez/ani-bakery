@@ -43,13 +43,27 @@ describe('ProductCard', () => {
   it('calls onOrderClick with the product name when ordering an available product', () => {
     const onOrderClick = vi.fn()
     render(<ProductCard product={baseProduct} onOrderClick={onOrderClick} />)
-    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getByRole('button', { name: /encargar/i }))
     expect(onOrderClick).toHaveBeenCalledWith('Pan Artesanal')
   })
 
   it('shows an unavailable badge and no order button when the product is unavailable', () => {
     render(<ProductCard product={{ ...baseProduct, available: false }} onOrderClick={vi.fn()} />)
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /encargar/i })).not.toBeInTheDocument()
     expect(screen.getAllByText(/no disponible/i).length).toBeGreaterThan(0)
+  })
+
+  it('opens an enlarged photo lightbox when the image is clicked', () => {
+    render(<ProductCard product={baseProduct} onOrderClick={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /ver imagen ampliada/i }))
+    expect(screen.getAllByAltText('Pan Artesanal').length).toBeGreaterThan(1)
+  })
+
+  it('closes the lightbox when the close button is clicked', () => {
+    render(<ProductCard product={baseProduct} onOrderClick={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /ver imagen ampliada/i }))
+    expect(screen.getAllByAltText('Pan Artesanal').length).toBeGreaterThan(1)
+    fireEvent.click(screen.getByRole('button', { name: /cerrar/i }))
+    expect(screen.getAllByAltText('Pan Artesanal').length).toBe(1)
   })
 })

@@ -4,6 +4,9 @@ import {
   isOrderDateValid,
   buildOrderMessage,
   buildWhatsAppOrderLink,
+  isValidUSPhone,
+  isValidEmail,
+  formatUSPhoneInput,
   ORDER_MIN_LEAD_DAYS,
 } from './business'
 
@@ -40,7 +43,7 @@ describe('isOrderDateValid', () => {
 describe('buildOrderMessage', () => {
   const form = {
     name: 'Ana García',
-    phone: '+1 803 555 0123',
+    contact: { method: 'phone' as const, value: '+1 803 555 0123' },
     items: [{ product: 'Pan Artesanal', quantity: 2 }],
     date: '2099-01-01',
     notes: '',
@@ -77,6 +80,72 @@ describe('buildOrderMessage', () => {
   it('includes the notes line when notes are present', () => {
     const message = buildOrderMessage({ ...form, notes: 'Sin nueces' }, false)
     expect(message).toContain('Sin nueces')
+  })
+})
+
+describe('isValidUSPhone', () => {
+  it('accepts a 10-digit number', () => {
+    expect(isValidUSPhone('8035550123')).toBe(true)
+  })
+
+  it('accepts formatted numbers with country code', () => {
+    expect(isValidUSPhone('+1 (803) 555-0123')).toBe(true)
+  })
+
+  it('rejects a number with too few digits', () => {
+    expect(isValidUSPhone('55501230')).toBe(false)
+  })
+
+  it('rejects a number starting with 0 or 1 after the area code strip', () => {
+    expect(isValidUSPhone('0035550123')).toBe(false)
+  })
+
+  it('rejects an empty string', () => {
+    expect(isValidUSPhone('')).toBe(false)
+  })
+})
+
+describe('isValidEmail', () => {
+  it('accepts a well-formed email', () => {
+    expect(isValidEmail('ana@example.com')).toBe(true)
+  })
+
+  it('rejects an email missing the @', () => {
+    expect(isValidEmail('ana.example.com')).toBe(false)
+  })
+
+  it('rejects an email missing the domain', () => {
+    expect(isValidEmail('ana@')).toBe(false)
+  })
+
+  it('rejects an empty string', () => {
+    expect(isValidEmail('')).toBe(false)
+  })
+})
+
+describe('formatUSPhoneInput', () => {
+  it('formats a partial number as the area code only', () => {
+    expect(formatUSPhoneInput('803')).toBe('(803')
+  })
+
+  it('formats a number mid-exchange', () => {
+    expect(formatUSPhoneInput('803555')).toBe('(803) 555')
+  })
+
+  it('formats a complete 10-digit number', () => {
+    expect(formatUSPhoneInput('8035550123')).toBe('(803) 555-0123')
+  })
+
+  it('strips a leading country code digit', () => {
+    expect(formatUSPhoneInput('18035550123')).toBe('(803) 555-0123')
+  })
+
+  it('ignores non-digit characters already present', () => {
+    expect(formatUSPhoneInput('(803) 555-0123')).toBe('(803) 555-0123')
+  })
+
+  it('returns an empty string for empty input', () => {
+    expect(formatUSPhoneInput('')).toBe('')
   })
 })
 

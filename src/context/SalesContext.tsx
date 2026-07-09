@@ -4,14 +4,17 @@ import {
   doc, orderBy, query,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import type { Sale, SaleStatus } from '../types'
+import type { Sale, PaymentMethod } from '../types'
 
 interface SalesContextType {
   sales: Sale[]
   loading: boolean
   addSale: (sale: Omit<Sale, 'id' | 'createdAt'>) => Promise<void>
-  updateSaleStatus: (id: string, status: SaleStatus) => Promise<void>
-  deleteSale: (id: string) => Promise<void>
+  confirmOrder: (sale: Sale) => Promise<void>
+  cancelOrder: (sale: Sale) => Promise<void>
+  markDelivered: (sale: Sale) => Promise<void>
+  markOrderPaid: (sale: Sale, paymentMethod: PaymentMethod) => Promise<void>
+  deleteSale: (sale: Sale) => Promise<void>
 }
 
 const SalesContext = createContext<SalesContextType | null>(null)
@@ -44,18 +47,37 @@ export function SalesProvider({ children }: { children: ReactNode }) {
     setSales(prev => [{ ...payload, id: ref.id }, ...prev])
   }
 
-  const updateSaleStatus = async (id: string, status: SaleStatus) => {
-    await updateDoc(doc(db, 'sales', id), { status })
-    setSales(prev => prev.map(s => s.id === id ? { ...s, status } : s))
+  const updateSale = async (sale: Sale, changes: Partial<Sale>) => {
+    await updateDoc(doc(db, 'sales', sale.id), changes)
+    setSales(prev => prev.map(s => s.id === sale.id ? { ...s, ...changes } : s))
   }
 
-  const deleteSale = async (id: string) => {
-    await deleteDoc(doc(db, 'sales', id))
-    setSales(prev => prev.filter(s => s.id !== id))
+  const confirmOrder = async (sale: Sale) => {
+    await updateSale(sale, { status: 'pending_payment' })
+  }
+
+  const cancelOrder = async (sale: Sale) => {
+    if (sale.paid) throw new Error('Cannot cancel a paid order')
+    await updateSale(sale, { status: 'cancelled' })
+  }
+
+  const markDelivered = async (sale: Sale) => {
+    await updateSale(sale, { status: 'delivered' })
+  }
+
+  const markOrderPaid = async (sale: Sale, paymentMethod: PaymentMethod) => {
+    const paidAt = new Date().toISOString()
+    await updateSale(sale, { paid: true, paymentMethod, paidAt, status: 'in_progress' })
+  }
+
+  const deleteSale = async (sale: Sale) => {
+    if (sale.paid) throw new Error('Cannot delete a paid sale')
+    await deleteDoc(doc(db, 'sales', sale.id))
+    setSales(prev => prev.filter(s => s.id !== sale.id))
   }
 
   return (
-    <SalesContext.Provider value={{ sales, loading, addSale, updateSaleStatus, deleteSale }}>
+    <SalesContext.Provider value={{ sales, loading, addSale, confirmOrder, cancelOrder, markDelivered, markOrderPaid, deleteSale }}>
       {children}
     </SalesContext.Provider>
   )

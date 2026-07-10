@@ -14,7 +14,7 @@ export const business = {
   logo: '/ana-logo.webp',
   bakerName: 'Anabel Rodríguez',
   bakerPhoto: '/anabel.webp',
-  email: 'ailinglez89@gmail.com',
+  email: 'anisartisanbakery@gmail.com',
 }
 
 export function buildWhatsAppOrderLink(message: string) {

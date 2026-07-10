@@ -9,7 +9,7 @@ import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail } from '../config/business'
 import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
@@ -98,6 +98,16 @@ export default function Admin() {
   const [salesFilter, setSalesFilter] = useState<SalesFilter>(() => (sessionStorage.getItem('admin-sales-filter') as SalesFilter) || 'active')
   const [monthFilter, setMonthFilter] = useState('')
   const [salesSort, setSalesSort] = useState<SalesSort>(() => (sessionStorage.getItem('admin-sales-sort') as SalesSort) || 'deliveryAsc')
+  const [salesPageSize, setSalesPageSize] = useState<number>(() => Number(sessionStorage.getItem('admin-sales-page-size')) || 10)
+  const [salesPage, setSalesPage] = useState<number>(() => Number(sessionStorage.getItem('admin-sales-page')) || 1)
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(() => {
+    try {
+      const stored = sessionStorage.getItem('admin-sales-expanded')
+      return stored ? new Set(JSON.parse(stored) as string[]) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
 
   const [addingOutOfOffice, setAddingOutOfOffice] = useState(false)
   const [outOfOfficeForm, setOutOfOfficeForm] = useState<OutOfOfficeFormData>(EMPTY_OUT_OF_OFFICE)
@@ -110,8 +120,11 @@ export default function Admin() {
 
   const selectTab = (next: Tab) => { sessionStorage.setItem('admin-tab', next); setTab(next) }
   const selectReviewTab = (next: ReviewTab) => { sessionStorage.setItem('admin-review-tab', next); setReviewTab(next) }
-  const selectSalesSort = (next: SalesSort) => { sessionStorage.setItem('admin-sales-sort', next); setSalesSort(next) }
-  const selectSalesFilter = (next: SalesFilter) => { sessionStorage.setItem('admin-sales-filter', next); setSalesFilter(next) }
+  const goToSalesPage = (next: number) => { sessionStorage.setItem('admin-sales-page', String(next)); setSalesPage(next) }
+  const selectSalesSort = (next: SalesSort) => { sessionStorage.setItem('admin-sales-sort', next); setSalesSort(next); goToSalesPage(1) }
+  const selectSalesFilter = (next: SalesFilter) => { sessionStorage.setItem('admin-sales-filter', next); setSalesFilter(next); goToSalesPage(1) }
+  const selectSalesPageSize = (next: number) => { sessionStorage.setItem('admin-sales-page-size', String(next)); setSalesPageSize(next); goToSalesPage(1) }
+  const changeMonthFilter = (next: string) => { setMonthFilter(next); goToSalesPage(1) }
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
@@ -361,6 +374,13 @@ export default function Admin() {
     return Array.from(groups.values())
   }, [sortedSales])
 
+  const salesTotalPages = Math.max(1, Math.ceil(groupedSales.length / salesPageSize))
+  const salesCurrentPage = Math.min(salesPage, salesTotalPages)
+  const paginatedSaleGroups = useMemo(() => {
+    const start = (salesCurrentPage - 1) * salesPageSize
+    return groupedSales.slice(start, start + salesPageSize)
+  }, [groupedSales, salesCurrentPage, salesPageSize])
+
   const renderStepper = (sale: Sale) => {
     const status = normalizeSaleStatus(sale.status)
     const stepIndex = (ORDER_STEPS as readonly SaleStatus[]).indexOf(status)
@@ -466,6 +486,42 @@ export default function Admin() {
       {t('admin.paid')}{sale.paymentMethod && ` · ${t(`admin.paymentMethod${sale.paymentMethod.charAt(0).toUpperCase()}${sale.paymentMethod.slice(1)}`)}`}
     </span>
   )
+
+  const toggleOrderExpanded = (key: string) => {
+    setExpandedOrders(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      sessionStorage.setItem('admin-sales-expanded', JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  const renderOrderSummary = (key: string, opts: { customerName: string; date: string; total: number; status: SaleStatus; itemCount?: number }) => {
+    const status = normalizeSaleStatus(opts.status)
+    const isExpanded = expandedOrders.has(key)
+    const isCancelled = status === 'cancelled'
+    const stepIndex = (ORDER_STEPS as readonly SaleStatus[]).indexOf(status)
+    const color = !isCancelled && stepIndex >= 0 ? STEP_COLOR[ORDER_STEPS[stepIndex]] : null
+    const stepLabel = isCancelled ? t('admin.salesStatusCancelled') : stepIndex >= 0 ? t(`admin.${STEP_LABEL_KEY[ORDER_STEPS[stepIndex]]}`) : ''
+    return (
+      <button type="button" onClick={() => toggleOrderExpanded(key)} className="w-full flex items-center justify-between gap-3 text-left">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${color ? color.dot : 'bg-gray-300'}`} />
+          <span className="font-bold text-black truncate">{opts.customerName}</span>
+          <span className="text-xs text-brown-mid flex-shrink-0 hidden sm:inline">{stepLabel}</span>
+          <span className="text-xs text-brown-mid flex-shrink-0">{opts.date}</span>
+          {opts.itemCount && opts.itemCount > 1 && (
+            <span className="text-xs text-brown-mid flex-shrink-0">· {opts.itemCount} {t('admin.products')}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="font-bold text-black">${opts.total.toFixed(2)}</span>
+          <ChevronDown size={16} className={`text-brown-mid transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+    )
+  }
 
   const handleDeleteReview = (reviewId: string) => {
     setConfirmDialog({ message: `${t('admin.deleteReview')}?`, tone: 'danger', onConfirm: () => { deleteReview(reviewId); setConfirmDialog(null) } })
@@ -798,7 +854,7 @@ export default function Admin() {
                   <div className="relative flex items-center">
                     <select
                       value={monthFilter}
-                      onChange={e => setMonthFilter(e.target.value)}
+                      onChange={e => changeMonthFilter(e.target.value)}
                       className="appearance-none bg-transparent text-sm font-semibold text-brown-dark focus:outline-none cursor-pointer pr-4"
                     >
                       <option value="">{t('admin.allMonths')}</option>
@@ -946,54 +1002,55 @@ export default function Admin() {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {groupedSales.map(group => {
+                {paginatedSaleGroups.map(group => {
                   const first = group[0]
+                  const sale = first
+                  const key = sale.orderId || sale.id
+                  const isExpanded = expandedOrders.has(key)
                   if (group.length === 1) {
-                    const sale = first
                     return (
                       <div key={sale.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
-                        {renderStepper(sale)}
-                        <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <h3 className="font-bold text-black">{sale.customerName}</h3>
-                                <p className="text-xs text-black font-medium">{sale.productName} × {sale.quantity}</p>
+                        {renderOrderSummary(key, { customerName: sale.customerName, date: sale.date, total: sale.total, status: sale.status })}
+                        {isExpanded && (
+                          <>
+                            {renderStepper(sale)}
+                            <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-xs text-black font-medium">{sale.productName} × {sale.quantity}</p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                  {sale.phone && <span className="text-xs text-black">{sale.phone}</span>}
+                                  {sale.email && <span className="text-xs text-black">{sale.email}</span>}
+                                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
+                                    {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
+                                  </span>
+                                  {sale.source === 'web' && (
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
+                                      {sale.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
+                                      {sale.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
+                                    </span>
+                                  )}
+                                  {renderPaidBadge(sale)}
+                                </div>
+                                {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
                               </div>
-                              <span className="text-lg font-bold text-black flex-shrink-0">${sale.total.toFixed(2)}</span>
+                              {renderSaleActions(sale)}
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 mt-2">
-                              <span className="text-xs text-black">{sale.date}</span>
-                              {sale.phone && <span className="text-xs text-black">· {sale.phone}</span>}
-                              {sale.email && <span className="text-xs text-black">· {sale.email}</span>}
-                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
-                                {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
-                              </span>
-                              {sale.source === 'web' && (
-                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
-                                  {sale.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
-                                  {sale.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
-                                </span>
-                              )}
-                              {renderPaidBadge(sale)}
-                            </div>
-                            {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
-                          </div>
-                          {renderSaleActions(sale)}
-                        </div>
+                          </>
+                        )}
                       </div>
                     )
                   }
                   const groupTotal = group.reduce((sum, s) => sum + s.total, 0)
                   return (
                     <div key={first.orderId} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
-                      <div className="flex items-start justify-between gap-2 pb-3 border-b border-rose/60">
-                        <div>
-                          <h3 className="font-bold text-black">{first.customerName}</h3>
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className="text-xs text-black">{first.date}</span>
-                            {first.phone && <span className="text-xs text-black">· {first.phone}</span>}
-                            {first.email && <span className="text-xs text-black">· {first.email}</span>}
+                      {renderOrderSummary(key, { customerName: first.customerName, date: first.date, total: groupTotal, status: first.status, itemCount: group.length })}
+                      {isExpanded && (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-rose/60">
+                            {first.phone && <span className="text-xs text-black">{first.phone}</span>}
+                            {first.email && <span className="text-xs text-black">{first.email}</span>}
                             <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
                               {first.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
                             </span>
@@ -1003,29 +1060,28 @@ export default function Admin() {
                                 {first.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
                               </span>
                             )}
+                            {first.notes && <p className="text-black text-xs italic w-full">"{first.notes}"</p>}
                           </div>
-                          {first.notes && <p className="text-black text-xs mt-1.5 italic">"{first.notes}"</p>}
-                        </div>
-                        <span className="text-lg font-bold text-black flex-shrink-0">${groupTotal.toFixed(2)}</span>
-                      </div>
 
-                      <div className="flex flex-col gap-3">
-                        {group.map(sale => (
-                          <div key={sale.id} className="flex flex-col gap-3 bg-cream/70 rounded-xl p-3 border border-rose/40">
-                            {renderStepper(sale)}
-                            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-sm font-semibold text-black">{sale.productName} × {sale.quantity}</p>
-                                  <span className="text-sm font-bold text-black">${sale.total.toFixed(2)}</span>
+                          <div className="flex flex-col gap-3">
+                            {group.map(sale => (
+                              <div key={sale.id} className="flex flex-col gap-3 bg-cream/70 rounded-xl p-3 border border-rose/40">
+                                {renderStepper(sale)}
+                                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-sm font-semibold text-black">{sale.productName} × {sale.quantity}</p>
+                                      <span className="text-sm font-bold text-black">${sale.total.toFixed(2)}</span>
+                                    </div>
+                                    {renderPaidBadge(sale)}
+                                  </div>
+                                  {renderSaleActions(sale)}
                                 </div>
-                                {renderPaidBadge(sale)}
                               </div>
-                              {renderSaleActions(sale)}
-                            </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </>
+                      )}
                     </div>
                   )
                 })}
@@ -1036,6 +1092,43 @@ export default function Admin() {
                     <button onClick={openAddSale} className="btn-primary">{t('admin.addSale')}</button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {groupedSales.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-6">
+                <div className="flex items-center gap-2 bg-cream-light border border-rose rounded-xl pl-3 pr-2 py-2">
+                  <span className="text-xs text-brown-mid">{t('admin.perPage')}</span>
+                  <div className="relative flex items-center">
+                    <select
+                      value={salesPageSize}
+                      onChange={e => selectSalesPageSize(Number(e.target.value))}
+                      className="appearance-none bg-transparent text-sm font-semibold text-brown-dark focus:outline-none cursor-pointer pr-4"
+                    >
+                      {[10, 25, 50, 100].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-0 text-brown-light pointer-events-none" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => goToSalesPage(salesCurrentPage - 1)}
+                    disabled={salesCurrentPage <= 1}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-rose text-brown-dark hover:bg-beige-light transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-sm text-brown-mid">{t('admin.pageOf', { current: salesCurrentPage, total: salesTotalPages })}</span>
+                  <button
+                    onClick={() => goToSalesPage(salesCurrentPage + 1)}
+                    disabled={salesCurrentPage >= salesTotalPages}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-rose text-brown-dark hover:bg-beige-light transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
             )}
           </>

@@ -55,3 +55,11 @@ export interface Sale {
   paidAt?: string
   language?: SaleLanguage
 }
+
+export interface OutOfOfficeRange {
+  id: string
+  startDate: string
+  endDate: string
+  reason: string
+  createdAt: string
+}

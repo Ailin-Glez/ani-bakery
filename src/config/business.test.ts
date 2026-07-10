@@ -7,6 +7,7 @@ import {
   isValidUSPhone,
   isValidEmail,
   formatUSPhoneInput,
+  getBlockedRange,
   ORDER_MIN_LEAD_DAYS,
 } from './business'
 
@@ -146,6 +147,30 @@ describe('formatUSPhoneInput', () => {
 
   it('returns an empty string for empty input', () => {
     expect(formatUSPhoneInput('')).toBe('')
+  })
+})
+
+describe('getBlockedRange', () => {
+  const ranges = [
+    { startDate: '2099-01-10', endDate: '2099-01-15', reason: 'Vacaciones' },
+    { startDate: '2099-02-01', endDate: '2099-02-03', reason: 'Viaje familiar' },
+  ]
+
+  it('returns the matching range when the date falls inside it', () => {
+    expect(getBlockedRange('2099-01-12', ranges)?.reason).toBe('Vacaciones')
+  })
+
+  it('matches on the boundary dates (inclusive)', () => {
+    expect(getBlockedRange('2099-01-10', ranges)?.reason).toBe('Vacaciones')
+    expect(getBlockedRange('2099-01-15', ranges)?.reason).toBe('Vacaciones')
+  })
+
+  it('returns undefined when the date falls outside all ranges', () => {
+    expect(getBlockedRange('2099-01-16', ranges)).toBeUndefined()
+  })
+
+  it('returns undefined for an empty ranges list', () => {
+    expect(getBlockedRange('2099-01-12', [])).toBeUndefined()
   })
 })
 

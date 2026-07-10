@@ -73,6 +73,16 @@ export function isOrderDateValid(dateStr: string) {
   return !!dateStr && dateStr >= getMinOrderDate()
 }
 
+interface BlockedRange {
+  startDate: string
+  endDate: string
+  reason: string
+}
+
+export function getBlockedRange(dateStr: string, ranges: BlockedRange[]) {
+  return ranges.find(r => dateStr >= r.startDate && dateStr <= r.endDate)
+}
+
 interface OrderItem {
   product: string
   quantity: number

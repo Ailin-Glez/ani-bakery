@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2, Mail, Loader2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useSales } from '../context/SalesContext'
-import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput } from '../config/business'
+import { useOutOfOffice } from '../context/OutOfOfficeContext'
+import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
 import type { ContactMethod } from '../types'
 
 interface CartItem {
@@ -55,6 +56,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const { t, i18n } = useTranslation()
   const { products } = useProducts()
   const { addSale } = useSales()
+  const { ranges: outOfOfficeRanges } = useOutOfOffice()
   const [step, setStep] = useState<Step>('product')
   const [cart, setCart] = useState<CartItem[]>([])
   const [customName, setCustomName] = useState('')
@@ -117,10 +119,18 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
     setCart(prev => prev.filter(item => item.product !== product))
   }
 
+  const getDateValidityMessage = (value: string) => {
+    if (!value) return ''
+    if (!isOrderDateValid(value)) return t('orders.dateError')
+    const blocked = getBlockedRange(value, outOfOfficeRanges)
+    if (blocked) return `${t('orders.dateBlockedPrefix')} ${blocked.reason}`
+    return ''
+  }
+
   const handleDetailsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     if (name === 'date') {
-      dateInputRef.current?.setCustomValidity(value && !isOrderDateValid(value) ? t('orders.dateError') : '')
+      dateInputRef.current?.setCustomValidity(getDateValidityMessage(value))
       e.target.reportValidity()
     }
     if (name === 'name') nameInputRef.current?.setCustomValidity('')
@@ -139,8 +149,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       nameInputRef.current?.reportValidity()
       return
     }
-    if (!isOrderDateValid(details.date)) {
-      dateInputRef.current?.setCustomValidity(t('orders.dateError'))
+    const dateMessage = getDateValidityMessage(details.date)
+    if (dateMessage) {
+      dateInputRef.current?.setCustomValidity(dateMessage)
       dateInputRef.current?.reportValidity()
       return
     }
@@ -158,6 +169,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+
+  const today = new Date().toISOString().slice(0, 10)
+  const upcomingOutOfOffice = outOfOfficeRanges.filter(r => r.endDate >= today).slice(0, 2)
 
   const recordSale = () => {
     const orderId = crypto.randomUUID()
@@ -390,6 +404,14 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
                   <input ref={dateInputRef} type="date" name="date" value={details.date} onChange={handleDetailsChange} required className={inputClass} />
+                  {upcomingOutOfOffice.length > 0 && (
+                    <div className="text-xs font-semibold text-burgundy mt-1.5">
+                      <p>{t('orders.upcomingOutOfOffice')}:</p>
+                      {upcomingOutOfOffice.map(range => (
+                        <p key={range.id} className="font-normal">{range.startDate} → {range.endDate} — {range.reason}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.notes')}</label>

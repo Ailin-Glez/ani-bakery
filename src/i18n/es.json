@@ -53,6 +53,8 @@
     "quantity": "Cantidad",
     "date": "Fecha deseada",
     "dateError": "La fecha debe ser al menos 2 días después de hoy.",
+    "dateBlockedPrefix": "No disponible esos días:",
+    "upcomingOutOfOffice": "Próximas fechas no disponibles",
     "notes": "Notas adicionales",
     "notesPlaceholder": "Alergias, dedicatorias, instrucciones especiales...",
     "submit": "Enviar encargo por WhatsApp 💬",
@@ -111,6 +113,7 @@
     "logout": "Salir",
     "tabProducts": "Productos",
     "tabReviews": "Reseñas",
+    "tabOutOfOffice": "Fuera de oficina",
     "addProduct": "Agregar producto",
     "editProduct": "Editar producto",
     "newProduct": "Nuevo producto",
@@ -192,6 +195,16 @@
     "paymentConfirmationSubject": "Confirmación de pago - Ani's Artisan Bakery",
     "paymentMethodZelle": "Zelle",
     "paymentMethodCash": "Efectivo",
-    "paymentMethodOther": "Otro"
+    "paymentMethodOther": "Otro",
+    "outOfOfficeIntro": "Marca los días en que no vas a trabajar (vacaciones, viajes, etc). Los clientes no podrán seleccionar esas fechas al hacer un encargo y verán el motivo que escribas aquí.",
+    "addOutOfOffice": "Agregar período",
+    "newOutOfOffice": "Nuevo período fuera de oficina",
+    "fieldStartDate": "Fecha de inicio",
+    "fieldEndDate": "Fecha de fin",
+    "fieldReason": "Motivo",
+    "fieldReasonPlaceholder": "Ej. Vacaciones, viaje familiar...",
+    "noOutOfOffice": "No hay períodos marcados.",
+    "deleteOutOfOfficeConfirm": "¿Eliminar este período fuera de oficina?",
+    "dateRangeInvalid": "La fecha de fin debe ser igual o posterior a la de inicio."
   }
 }

@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { useProducts } from '../context/ProductContext'
 import { useReviews } from '../context/ReviewContext'
 import { useSales } from '../context/SalesContext'
+import { useOutOfOffice } from '../context/OutOfOfficeContext'
 import { exportSalesToExcel } from '../lib/exportSales'
 import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, sendOrderEmail } from '../config/business'
-import type { Product, Sale, SaleStatus, PaymentMethod } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail } from 'lucide-react'
+import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
@@ -19,16 +20,19 @@ const EMPTY_PRODUCT: Omit<Product, 'id'> = {
 interface SaleFormData {
   customerName: string
   phone: string
-  productName: string
-  quantity: number
-  unitPrice: number
   date: string
   notes: string
   status: SaleStatus
 }
 
+interface SaleCartItem {
+  productName: string
+  quantity: number
+  unitPrice: number
+}
+
 const EMPTY_SALE: SaleFormData = {
-  customerName: '', phone: '', productName: '', quantity: 1, unitPrice: 0, date: '', notes: '', status: 'pending_confirmation',
+  customerName: '', phone: '', date: '', notes: '', status: 'pending_confirmation',
 }
 
 const ORDER_STEPS = ['pending_confirmation', 'pending_payment', 'in_progress', 'delivered'] as const satisfies readonly SaleStatus[]
@@ -45,7 +49,15 @@ const STEP_COLOR: Record<typeof ORDER_STEPS[number], { dot: string; dotDone: str
   delivered: { dot: 'bg-green-500', dotDone: 'bg-green-200', ring: 'ring-green-500/30', text: 'text-green-600', textDone: 'text-green-400', line: 'bg-green-200' },
 }
 
-type Tab = 'products' | 'sales' | 'reviews'
+type Tab = 'products' | 'sales' | 'reviews' | 'outOfOffice'
+
+interface OutOfOfficeFormData {
+  startDate: string
+  endDate: string
+  reason: string
+}
+
+const EMPTY_OUT_OF_OFFICE: OutOfOfficeFormData = { startDate: '', endDate: '', reason: '' }
 type ReviewTab = 'pending' | 'approved'
 type SalesFilter = 'all' | SaleStatus
 type SalesSort = 'deliveryAsc' | 'deliveryDesc' | 'receivedDesc' | 'receivedAsc'
@@ -75,12 +87,19 @@ export default function Admin() {
 
   const [addingSale, setAddingSale] = useState(false)
   const [saleForm, setSaleForm] = useState<SaleFormData>(EMPTY_SALE)
+  const [saleCart, setSaleCart] = useState<SaleCartItem[]>([])
+  const [saleCustomName, setSaleCustomName] = useState('')
   const [salesFilter, setSalesFilter] = useState<SalesFilter>('all')
   const [salesSort, setSalesSort] = useState<SalesSort>(() => (sessionStorage.getItem('admin-sales-sort') as SalesSort) || 'deliveryAsc')
+
+  const [addingOutOfOffice, setAddingOutOfOffice] = useState(false)
+  const [outOfOfficeForm, setOutOfOfficeForm] = useState<OutOfOfficeFormData>(EMPTY_OUT_OF_OFFICE)
+  const [outOfOfficeError, setOutOfOfficeError] = useState('')
 
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct } = useProducts()
   const { pendingReviews, approvedReviews, loading: reviewsLoading, approveReview, rejectReview, deleteReview } = useReviews()
   const { sales, loading: salesLoading, addSale, confirmOrder, cancelOrder, markDelivered, markOrderPaid, deleteSale } = useSales()
+  const { ranges: outOfOfficeRanges, loading: outOfOfficeLoading, addRange: addOutOfOfficeRange, deleteRange: deleteOutOfOfficeRange } = useOutOfOffice()
 
   const selectTab = (next: Tab) => { sessionStorage.setItem('admin-tab', next); setTab(next) }
   const selectReviewTab = (next: ReviewTab) => { sessionStorage.setItem('admin-review-tab', next); setReviewTab(next) }
@@ -148,41 +167,66 @@ export default function Admin() {
   const inputClass = 'w-full bg-cream border border-rose rounded-xl px-4 py-2.5 text-brown-dark placeholder-brown-mid/40 focus:outline-none focus:border-wine focus:ring-1 focus:ring-wine/30 transition-colors text-sm'
 
   // ── Sales ──
-  const openAddSale = () => { setAddingSale(true); setSaleForm(EMPTY_SALE) }
-  const closeSaleModal = () => { setAddingSale(false); setSaleForm(EMPTY_SALE) }
+  const openAddSale = () => { setAddingSale(true); setSaleForm(EMPTY_SALE); setSaleCart([]); setSaleCustomName('') }
+  const closeSaleModal = () => { setAddingSale(false); setSaleForm(EMPTY_SALE); setSaleCart([]); setSaleCustomName('') }
 
-  const handleSaleProductChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const addSaleCartProduct = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const name = e.target.value
+    if (!name) return
     const matched = products.find(p => p.name === name)
-    setSaleForm(prev => ({ ...prev, productName: name, unitPrice: matched ? matched.price : prev.unitPrice }))
+    setSaleCart(prev => {
+      const idx = prev.findIndex(item => item.productName === name)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 }
+        return next
+      }
+      return [...prev, { productName: name, quantity: 1, unitPrice: matched?.price ?? 0 }]
+    })
+    e.target.value = ''
   }
+
+  const addSaleCustomItem = () => {
+    if (!saleCustomName.trim()) return
+    setSaleCart(prev => [...prev, { productName: saleCustomName.trim(), quantity: 1, unitPrice: 0 }])
+    setSaleCustomName('')
+  }
+
+  const updateSaleCartItem = (index: number, changes: Partial<Pick<SaleCartItem, 'quantity' | 'unitPrice'>>) => {
+    setSaleCart(prev => prev.map((item, i) => i === index ? { ...item, ...changes } : item))
+  }
+
+  const removeSaleCartItem = (index: number) => {
+    setSaleCart(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const saleCartTotal = saleCart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
 
   const handleSaleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setSaleForm(prev => ({
-      ...prev,
-      [name]: name === 'quantity' || name === 'unitPrice' ? Number(value) : value,
-    }))
+    setSaleForm(prev => ({ ...prev, [name]: value }))
   }
 
   const handleSaleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    await addSale({
-      orderId: crypto.randomUUID(),
+    if (saleCart.length === 0) return
+    const orderId = crypto.randomUUID()
+    await Promise.all(saleCart.map(item => addSale({
+      orderId,
       customerName: saleForm.customerName,
       phone: saleForm.phone,
       contactMethod: 'phone',
-      productName: saleForm.productName,
-      quantity: saleForm.quantity,
-      unitPrice: saleForm.unitPrice,
-      total: saleForm.unitPrice * saleForm.quantity,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      total: item.unitPrice * item.quantity,
       date: saleForm.date,
       notes: saleForm.notes,
       status: saleForm.status,
       source: 'manual',
       paid: false,
       language: 'es',
-    })
+    })))
     closeSaleModal()
   }
 
@@ -381,6 +425,33 @@ export default function Admin() {
     setConfirmDialog({ message: `${t('admin.deleteReview')}?`, tone: 'danger', onConfirm: () => { deleteReview(reviewId); setConfirmDialog(null) } })
   }
 
+  // ── Out of office ──
+  const openAddOutOfOffice = () => { setAddingOutOfOffice(true); setOutOfOfficeForm(EMPTY_OUT_OF_OFFICE); setOutOfOfficeError('') }
+  const closeOutOfOfficeModal = () => { setAddingOutOfOffice(false); setOutOfOfficeForm(EMPTY_OUT_OF_OFFICE); setOutOfOfficeError('') }
+
+  const handleOutOfOfficeFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setOutOfOfficeForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleOutOfOfficeSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (outOfOfficeForm.endDate < outOfOfficeForm.startDate) {
+      setOutOfOfficeError(t('admin.dateRangeInvalid'))
+      return
+    }
+    await addOutOfOfficeRange({
+      startDate: outOfOfficeForm.startDate,
+      endDate: outOfOfficeForm.endDate,
+      reason: outOfOfficeForm.reason,
+    })
+    closeOutOfOfficeModal()
+  }
+
+  const handleDeleteOutOfOffice = (range: OutOfOfficeRange) => {
+    setConfirmDialog({ message: t('admin.deleteOutOfOfficeConfirm'), tone: 'danger', onConfirm: () => { deleteOutOfOfficeRange(range); setConfirmDialog(null) } })
+  }
+
   // ── Login ──
   if (!authed) {
     return (
@@ -435,7 +506,7 @@ export default function Admin() {
       {/* Tabs */}
       <div className="border-b border-rose bg-cream-light">
         <div className="max-w-5xl mx-auto px-6 flex">
-          {(['products', 'sales', 'reviews'] as Tab[]).map(tabKey => (
+          {(['products', 'sales', 'reviews', 'outOfOffice'] as Tab[]).map(tabKey => (
             <button
               key={tabKey}
               onClick={() => selectTab(tabKey)}
@@ -716,38 +787,58 @@ export default function Admin() {
                     <div>
                       <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldProduct')} *</label>
                       <select
-                        name="productName"
-                        value={products.some(p => p.name === saleForm.productName) ? saleForm.productName : (saleForm.productName ? '__other__' : '')}
-                        onChange={handleSaleProductChange}
-                        required
+                        value=""
+                        onChange={addSaleCartProduct}
                         className={inputClass}
                       >
                         <option value="">{t('orders.productPlaceholder')}</option>
                         {products.map(p => (
                           <option key={p.id} value={p.name}>{p.name} — ${p.price}</option>
                         ))}
-                        <option value="__other__">{t('admin.fieldProductOther')}</option>
                       </select>
-                      {!products.some(p => p.name === saleForm.productName) && saleForm.productName !== '' && (
+                      <div className="flex gap-2 mt-2">
                         <input
-                          name="productName"
-                          value={saleForm.productName === '__other__' ? '' : saleForm.productName}
-                          onChange={handleSaleFieldChange}
-                          placeholder={t('admin.fieldProduct')}
-                          className={`${inputClass} mt-2`}
+                          value={saleCustomName}
+                          onChange={e => setSaleCustomName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSaleCustomItem() } }}
+                          placeholder={t('admin.fieldProductOther')}
+                          className={inputClass}
                         />
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldQuantity')} *</label>
-                        <input type="number" name="quantity" value={saleForm.quantity} onChange={handleSaleFieldChange} required min={1} className={inputClass} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldUnitPrice')} *</label>
-                        <input type="number" name="unitPrice" value={saleForm.unitPrice} onChange={handleSaleFieldChange} required min={0} step={0.5} className={inputClass} />
+                        <button type="button" onClick={addSaleCustomItem} className="btn-secondary text-sm px-4 flex-shrink-0">
+                          Agregar
+                        </button>
                       </div>
                     </div>
+
+                    {saleCart.length > 0 && (
+                      <div className="bg-cream rounded-xl p-3 flex flex-col gap-2 border border-rose">
+                        {saleCart.map((item, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="flex-1 text-sm text-brown-dark truncate">{item.productName}</span>
+                            <button type="button" onClick={() => updateSaleCartItem(i, { quantity: Math.max(1, item.quantity - 1) })} className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-light text-wine hover:bg-rose flex-shrink-0">
+                              <Minus size={12} />
+                            </button>
+                            <span className="w-5 text-center text-sm font-semibold text-brown-dark">{item.quantity}</span>
+                            <button type="button" onClick={() => updateSaleCartItem(i, { quantity: item.quantity + 1 })} className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-light text-wine hover:bg-rose flex-shrink-0">
+                              <Plus size={12} />
+                            </button>
+                            <span className="text-brown-mid text-xs flex-shrink-0">×$</span>
+                            <input
+                              type="number" min={0} step={0.5} value={item.unitPrice}
+                              onChange={e => updateSaleCartItem(i, { unitPrice: Number(e.target.value) })}
+                              className="w-16 text-sm px-2 py-1 rounded-lg border border-rose bg-cream-light text-center flex-shrink-0"
+                            />
+                            <button type="button" onClick={() => removeSaleCartItem(i)} className="text-wine hover:text-burgundy flex-shrink-0">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        <div className="flex justify-between text-sm font-bold text-brown-dark pt-2 border-t border-rose">
+                          <span>{t('admin.total')}</span>
+                          <span>${saleCartTotal.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldDate')} *</label>
@@ -767,7 +858,7 @@ export default function Admin() {
                       <textarea name="notes" value={saleForm.notes} onChange={handleSaleFieldChange} rows={2} className={`${inputClass} resize-none`} />
                     </div>
                     <div className="flex gap-3 pt-2">
-                      <button type="submit" className="btn-primary flex-1 text-center text-sm py-3">{t('admin.addSale')}</button>
+                      <button type="submit" disabled={saleCart.length === 0} className="btn-primary flex-1 text-center text-sm py-3 disabled:opacity-40 disabled:cursor-not-allowed">{t('admin.addSale')}</button>
                       <button type="button" onClick={closeSaleModal} className="btn-secondary flex-1 text-center text-sm py-3">{t('admin.cancel')}</button>
                     </div>
                   </form>
@@ -969,6 +1060,78 @@ export default function Admin() {
                         <Trash2 size={16} />
                       </button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── OUT OF OFFICE TAB ── */}
+        {tab === 'outOfOffice' && (
+          <>
+            <div className="flex items-center justify-between mb-4 gap-4">
+              <p className="text-brown-mid text-sm max-w-xl">{t('admin.outOfOfficeIntro')}</p>
+              <button onClick={openAddOutOfOffice} className="btn-primary flex items-center gap-2 py-2.5 px-5 text-sm flex-shrink-0">
+                <PlusCircle size={18} /> {t('admin.addOutOfOffice')}
+              </button>
+            </div>
+
+            {addingOutOfOffice && (
+              <div className="fixed inset-0 bg-brown-dark/60 flex items-center justify-center z-50 px-4">
+                <div className="bg-cream-light rounded-3xl shadow-2xl w-full max-w-md p-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-brown-dark">{t('admin.newOutOfOffice')}</h3>
+                    <button onClick={closeOutOfOfficeModal} className="text-brown-mid hover:text-brown-dark"><X size={22} /></button>
+                  </div>
+                  <form onSubmit={handleOutOfOfficeSave} className="flex flex-col gap-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldStartDate')} *</label>
+                        <input type="date" name="startDate" value={outOfOfficeForm.startDate} onChange={handleOutOfOfficeFieldChange} required className={inputClass} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldEndDate')} *</label>
+                        <input type="date" name="endDate" value={outOfOfficeForm.endDate} onChange={handleOutOfOfficeFieldChange} required className={inputClass} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldReason')} *</label>
+                      <input name="reason" value={outOfOfficeForm.reason} onChange={handleOutOfOfficeFieldChange} required placeholder={t('admin.fieldReasonPlaceholder')} className={inputClass} />
+                    </div>
+                    {outOfOfficeError && <p className="text-sm text-burgundy">{outOfOfficeError}</p>}
+                    <div className="flex gap-3 pt-2">
+                      <button type="submit" className="btn-primary flex-1 text-center text-sm py-3">{t('admin.addOutOfOffice')}</button>
+                      <button type="button" onClick={closeOutOfOfficeModal} className="btn-secondary flex-1 text-center text-sm py-3">{t('admin.cancel')}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {outOfOfficeLoading ? (
+              <div className="flex items-center justify-center py-20 gap-3 text-brown-mid">
+                <Loader2 size={24} className="animate-spin" /> Cargando...
+              </div>
+            ) : outOfOfficeRanges.length === 0 ? (
+              <div className="text-center py-16 text-brown-mid">
+                <PlaneTakeoff size={48} className="mx-auto mb-3 opacity-50" />
+                <p className="text-lg">{t('admin.noOutOfOffice')}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {outOfOfficeRanges.map(range => (
+                  <div key={range.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center justify-between gap-4 shadow-sm">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="bg-rose-light text-wine rounded-xl p-2.5 flex-shrink-0"><PlaneTakeoff size={18} /></div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-brown-dark">{range.startDate} → {range.endDate}</p>
+                        <p className="text-brown-mid text-sm truncate">{range.reason}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteOutOfOffice(range)} className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl flex-shrink-0">
+                      <Trash2 size={14} /> {t('admin.delete')}
+                    </button>
                   </div>
                 ))}
               </div>

@@ -457,7 +457,7 @@ export default function Admin() {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center px-4">
         <div className="bg-cream-light rounded-3xl shadow-xl p-10 w-full max-w-sm text-center">
-          <img src="/ana-logo.jpeg" alt="Ani's Artisan Bakery" className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-rose" />
+          <img src="/ana-logo.webp" alt="Ani's Artisan Bakery" className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-rose" />
           <h1 className="text-2xl font-bold text-brown-dark mb-1">{t('admin.title')}</h1>
           <p className="text-brown-mid text-sm mb-6">{t('admin.subtitle')}</p>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -489,7 +489,7 @@ export default function Admin() {
       {/* Header */}
       <header className="bg-cream-light border-b border-rose px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/ana-logo.jpeg" alt="Ani's Artisan Bakery" className="h-10 w-10 rounded-full object-cover" />
+          <img src="/ana-logo.webp" alt="Ani's Artisan Bakery" className="h-10 w-10 rounded-full object-cover" />
           <div>
             <h1 className="font-bold text-brown-dark">{t('admin.title')}</h1>
             <p className="text-xs text-brown-mid">{t('admin.subtitle')}</p>

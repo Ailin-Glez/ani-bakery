@@ -1,11 +1,13 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ProductProvider } from './context/ProductContext'
 import { ReviewProvider } from './context/ReviewContext'
 import { SalesProvider } from './context/SalesContext'
 import { OutOfOfficeProvider } from './context/OutOfOfficeContext'
 import Home from './pages/Home'
-import Admin from './pages/Admin'
 import './index.css'
+
+const Admin = lazy(() => import('./pages/Admin'))
 
 export default function App() {
   return (
@@ -16,7 +18,14 @@ export default function App() {
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Home />} />
-                <Route path="/admin" element={<Admin />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <Suspense fallback={<div className="min-h-screen bg-cream" />}>
+                      <Admin />
+                    </Suspense>
+                  }
+                />
               </Routes>
             </BrowserRouter>
           </OutOfOfficeProvider>

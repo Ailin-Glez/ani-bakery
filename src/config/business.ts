@@ -11,9 +11,9 @@ export const business = {
     handle: '@anisartisanbakery',
     url: 'https://www.instagram.com/anisartisanbakery/',
   },
-  logo: '/ana-logo.jpeg',
+  logo: '/ana-logo.webp',
   bakerName: 'Anabel Rodríguez',
-  bakerPhoto: '/anabel.jpeg',
+  bakerPhoto: '/anabel.webp',
   email: 'ailinglez89@gmail.com',
 }
 

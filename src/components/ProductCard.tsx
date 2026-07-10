@@ -22,9 +22,9 @@ function ProductLightbox({ product, name, onClose }: {
     >
       <div className="relative inline-block" onClick={e => e.stopPropagation()}>
         <img
-          src={product.image || '/bread.jpeg'}
+          src={product.image || '/bread.webp'}
           alt={name}
-          onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.jpeg' }}
+          onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="block max-w-[90vw] max-h-[85vh] object-contain rounded-2xl shadow-2xl"
         />
         <button onClick={onClose} aria-label={t('products.closeAlt')} className="absolute top-3 right-3 bg-brown-dark/60 hover:bg-brown-dark/80 text-cream-light rounded-full p-1.5 transition-colors">
@@ -56,16 +56,16 @@ export default function ProductCard({ product, onOrderClick }: Props) {
         className="relative overflow-hidden aspect-[5/4] bg-brown-dark/5 cursor-zoom-in"
       >
         <img
-          src={product.image || '/bread.jpeg'}
+          src={product.image || '/bread.webp'}
           alt=""
           aria-hidden="true"
-          onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.jpeg' }}
+          onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-40"
         />
         <img
-          src={product.image || '/bread.jpeg'}
+          src={product.image || '/bread.webp'}
           alt={name}
-          onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.jpeg' }}
+          onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="relative w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 ease-out"
         />
         {!product.available && (

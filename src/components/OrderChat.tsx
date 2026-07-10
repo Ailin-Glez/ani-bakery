@@ -83,7 +83,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         quantity: 1,
         unitPrice: matched?.price ?? 0,
       }])
-      setStep('details')
+      setStep('product')
     }
   }, [open, initialProduct, products])
 
@@ -328,20 +328,23 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </div>
 
               {cart.length > 0 && (
-                <div className="bg-cream-light rounded-2xl p-4 shadow-sm flex flex-col gap-2 mt-2">
-                  <p className="text-xs font-bold text-brown-dark uppercase tracking-wide">{t('orders.yourOrder')}</p>
+                <div className="bg-gold-dark text-brown-dark rounded-2xl p-4 shadow-lg flex flex-col gap-2.5 mt-2 border-2 border-gold-deep">
+                  <div className="flex items-center gap-1.5">
+                    <ShoppingBag size={15} />
+                    <p className="text-xs font-bold uppercase tracking-wide">{t('orders.yourOrder')}</p>
+                  </div>
                   {cart.map(item => (
                     <div key={item.product} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="text-brown-dark flex-1 truncate">{isEn ? item.productEn : item.product}</span>
+                      <span className="flex-1 truncate font-semibold">{isEn ? item.productEn : item.product}</span>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button onClick={() => changeQuantity(item.product, -1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-light text-wine hover:bg-rose">
+                        <button onClick={() => changeQuantity(item.product, -1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-brown-dark/10 hover:bg-brown-dark/20">
                           <Minus size={12} />
                         </button>
-                        <span className="w-5 text-center font-semibold text-brown-dark">{item.quantity}</span>
-                        <button onClick={() => changeQuantity(item.product, 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-light text-wine hover:bg-rose">
+                        <span className="w-5 text-center font-bold">{item.quantity}</span>
+                        <button onClick={() => changeQuantity(item.product, 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-brown-dark/10 hover:bg-brown-dark/20">
                           <Plus size={12} />
                         </button>
-                        <button onClick={() => removeFromCart(item.product)} className="ml-1 text-brown-light hover:text-wine">
+                        <button onClick={() => removeFromCart(item.product)} className="ml-1 text-brown-dark/60 hover:text-brown-dark">
                           <Trash2 size={14} />
                         </button>
                       </div>

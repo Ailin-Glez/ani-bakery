@@ -3,7 +3,7 @@ import { Resend } from 'resend'
 import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
 
 const TO_EMAIL = process.env.NOTIFY_EMAIL || 'ailinglez89@gmail.com'
-const FROM_EMAIL = 'Ani\'s Artisan Bakery <onboarding@resend.dev>'
+const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
 
 export const handler: Handler = async event => {
   if (event.httpMethod !== 'POST') {
@@ -31,13 +31,18 @@ export const handler: Handler = async event => {
     const resend = new Resend(process.env.RESEND_API_KEY)
     const html = renderBrandedEmail({ heading: subject, bodyHtml: textToHtmlParagraphs(message) })
 
-    await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: to || TO_EMAIL,
       subject,
       html,
       ...(replyTo ? { replyTo: fromName ? `${fromName} <${replyTo}>` : replyTo } : {}),
     })
+
+    if (error) {
+      console.error('send-order-email: Resend returned an error:', error)
+      return { statusCode: 502, body: JSON.stringify({ success: false, error }) }
+    }
 
     return { statusCode: 200, body: JSON.stringify({ success: true }) }
   } catch (err) {

@@ -198,3 +198,34 @@ export function buildPaymentConfirmationMessage(form: PaymentConfirmationData, i
       ]
   return lines.join('\n')
 }
+
+interface ThankYouData {
+  name: string
+}
+
+export function buildThankYouMessage(form: ThankYouData, isEn: boolean) {
+  const lines = isEn
+    ? [
+        `Hi ${form.name}! Thank you so much for your order 🥰`,
+        '',
+        `I really hope you enjoy it! If you have a minute, it would mean a lot if you could leave a review, or recommend Ani's Artisan Bakery to a friend.`,
+        '',
+        `*Website:* https://anisartisanbakery.com/#resenas`,
+        `*WhatsApp:* ${business.phone.display}`,
+        `*Instagram:* ${business.instagram.url}`,
+        '',
+        'See you on your next order!',
+      ]
+    : [
+        `¡Hola ${form.name}! Muchas gracias por tu compra 🥰`,
+        '',
+        `¡Espero que lo disfrutes mucho! Si tenés un minuto, me ayudaría un montón que dejaras una reseña, o que recomendaras Ani's Artisan Bakery a algún amigo.`,
+        '',
+        `*Sitio web:* https://anisartisanbakery.com/#resenas`,
+        `*WhatsApp:* ${business.phone.display}`,
+        `*Instagram:* ${business.instagram.url}`,
+        '',
+        '¡Nos vemos en tu próximo pedido!',
+      ]
+  return lines.join('\n')
+}

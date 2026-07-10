@@ -13,6 +13,7 @@ interface SalesContextType {
   confirmOrder: (sale: Sale) => Promise<void>
   cancelOrder: (sale: Sale) => Promise<void>
   markDelivered: (sale: Sale) => Promise<void>
+  markDeliveredCashOnDelivery: (sale: Sale) => Promise<void>
   markOrderPaid: (sale: Sale, paymentMethod: PaymentMethod) => Promise<void>
   deleteSale: (sale: Sale) => Promise<void>
 }
@@ -65,6 +66,13 @@ export function SalesProvider({ children }: { children: ReactNode }) {
     await updateSale(sale, { status: 'delivered' })
   }
 
+  // For trusted customers who pay in person (cash) at delivery time, skipping the
+  // explicit "mark as paid" step — this marks both paid and delivered together.
+  const markDeliveredCashOnDelivery = async (sale: Sale) => {
+    const paidAt = new Date().toISOString()
+    await updateSale(sale, { paid: true, paymentMethod: 'cash', paidAt, status: 'delivered' })
+  }
+
   const markOrderPaid = async (sale: Sale, paymentMethod: PaymentMethod) => {
     const paidAt = new Date().toISOString()
     await updateSale(sale, { paid: true, paymentMethod, paidAt, status: 'in_progress' })
@@ -77,7 +85,7 @@ export function SalesProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SalesContext.Provider value={{ sales, loading, addSale, confirmOrder, cancelOrder, markDelivered, markOrderPaid, deleteSale }}>
+    <SalesContext.Provider value={{ sales, loading, addSale, confirmOrder, cancelOrder, markDelivered, markDeliveredCashOnDelivery, markOrderPaid, deleteSale }}>
       {children}
     </SalesContext.Provider>
   )

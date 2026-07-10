@@ -7,9 +7,9 @@ import { useOutOfOffice } from '../context/OutOfOfficeContext'
 import { exportSalesToExcel } from '../lib/exportSales'
 import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, sendOrderEmail } from '../config/business'
+import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail } from '../config/business'
 import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
@@ -59,7 +59,13 @@ interface OutOfOfficeFormData {
 
 const EMPTY_OUT_OF_OFFICE: OutOfOfficeFormData = { startDate: '', endDate: '', reason: '' }
 type ReviewTab = 'pending' | 'approved'
-type SalesFilter = 'all' | SaleStatus
+type SalesFilter = 'active' | 'all' | SaleStatus
+const ACTIVE_SALE_STATUSES: SaleStatus[] = ['pending_confirmation', 'pending_payment', 'in_progress']
+
+function getCurrentMonthKey() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
 type SalesSort = 'deliveryAsc' | 'deliveryDesc' | 'receivedDesc' | 'receivedAsc'
 
 const SALES_SORT_LABEL: Record<SalesSort, string> = {
@@ -89,7 +95,8 @@ export default function Admin() {
   const [saleForm, setSaleForm] = useState<SaleFormData>(EMPTY_SALE)
   const [saleCart, setSaleCart] = useState<SaleCartItem[]>([])
   const [saleCustomName, setSaleCustomName] = useState('')
-  const [salesFilter, setSalesFilter] = useState<SalesFilter>('all')
+  const [salesFilter, setSalesFilter] = useState<SalesFilter>(() => (sessionStorage.getItem('admin-sales-filter') as SalesFilter) || 'active')
+  const [monthFilter, setMonthFilter] = useState('')
   const [salesSort, setSalesSort] = useState<SalesSort>(() => (sessionStorage.getItem('admin-sales-sort') as SalesSort) || 'deliveryAsc')
 
   const [addingOutOfOffice, setAddingOutOfOffice] = useState(false)
@@ -98,12 +105,13 @@ export default function Admin() {
 
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct } = useProducts()
   const { pendingReviews, approvedReviews, loading: reviewsLoading, approveReview, rejectReview, deleteReview } = useReviews()
-  const { sales, loading: salesLoading, addSale, confirmOrder, cancelOrder, markDelivered, markOrderPaid, deleteSale } = useSales()
+  const { sales, loading: salesLoading, addSale, confirmOrder, cancelOrder, markDelivered, markDeliveredCashOnDelivery, markOrderPaid, deleteSale } = useSales()
   const { ranges: outOfOfficeRanges, loading: outOfOfficeLoading, addRange: addOutOfOfficeRange, deleteRange: deleteOutOfOfficeRange } = useOutOfOffice()
 
   const selectTab = (next: Tab) => { sessionStorage.setItem('admin-tab', next); setTab(next) }
   const selectReviewTab = (next: ReviewTab) => { sessionStorage.setItem('admin-review-tab', next); setReviewTab(next) }
   const selectSalesSort = (next: SalesSort) => { sessionStorage.setItem('admin-sales-sort', next); setSalesSort(next) }
+  const selectSalesFilter = (next: SalesFilter) => { sessionStorage.setItem('admin-sales-filter', next); setSalesFilter(next) }
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
@@ -230,10 +238,29 @@ export default function Admin() {
     closeSaleModal()
   }
 
-  const filteredSales = useMemo(
-    () => salesFilter === 'all' ? sales : sales.filter(s => s.status === salesFilter),
-    [sales, salesFilter]
-  )
+  const filteredSales = useMemo(() => {
+    let result = sales
+    if (salesFilter === 'active') {
+      result = result.filter(s => ACTIVE_SALE_STATUSES.includes(normalizeSaleStatus(s.status)))
+    } else if (salesFilter !== 'all') {
+      result = result.filter(s => normalizeSaleStatus(s.status) === salesFilter)
+    }
+    if (monthFilter) {
+      result = result.filter(s => s.date.startsWith(monthFilter))
+    }
+    return result
+  }, [sales, salesFilter, monthFilter])
+
+  const monthOptions = useMemo(() => {
+    const keys = new Set(sales.map(s => s.date.slice(0, 7)).filter(Boolean))
+    return Array.from(keys).sort().reverse()
+  }, [sales])
+
+  const formatMonthLabel = (key: string) => {
+    const [year, month] = key.split('-').map(Number)
+    const label = new Date(year, month - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  }
 
   const salesSummary = useMemo(() => {
     const now = new Date()
@@ -273,6 +300,18 @@ export default function Admin() {
     sendPaymentConfirmation(sale)
   }
 
+  const sendThankYouMessage = async (sale: Sale) => {
+    // Same rule as the payment confirmation: respect the language the customer ordered in.
+    const lang = sale.language || 'es'
+    const message = buildThankYouMessage({ name: sale.customerName }, lang === 'en')
+    if (sale.contactMethod === 'email' && sale.email) {
+      const subject = i18n.getFixedT(lang)('admin.thankYouSubject')
+      await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name })
+    } else {
+      window.open(buildWhatsAppLinkTo(sale.phone, message), '_blank')
+    }
+  }
+
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; tone?: 'default' | 'danger'; onConfirm: () => void } | null>(null)
 
   const handleConfirmOrder = (sale: Sale) => {
@@ -284,7 +323,11 @@ export default function Admin() {
   }
 
   const handleMarkDelivered = (sale: Sale) => {
-    setConfirmDialog({ message: t('admin.markDeliveredConfirm'), onConfirm: () => { markDelivered(sale); setConfirmDialog(null) } })
+    setConfirmDialog({ message: t('admin.markDeliveredConfirm'), onConfirm: () => { markDelivered(sale); sendThankYouMessage(sale); setConfirmDialog(null) } })
+  }
+
+  const handleMarkDeliveredCash = (sale: Sale) => {
+    setConfirmDialog({ message: t('admin.markDeliveredCashConfirm'), onConfirm: () => { markDeliveredCashOnDelivery(sale); sendThankYouMessage(sale); setConfirmDialog(null) } })
   }
 
   const handleDeleteProduct = (product: Product) => {
@@ -323,7 +366,7 @@ export default function Admin() {
     const stepIndex = (ORDER_STEPS as readonly SaleStatus[]).indexOf(status)
     if (status === 'cancelled') {
       return (
-        <div className="flex items-center gap-2 text-sm font-semibold text-wine bg-rose-light px-3 py-2 rounded-xl w-fit">
+        <div className="flex items-center gap-2 text-sm font-semibold text-wine border border-rose px-3 py-2 rounded-xl w-fit">
           <Ban size={14} /> {t('admin.salesStatusCancelled')}
         </div>
       )
@@ -359,14 +402,14 @@ export default function Admin() {
   const renderSaleActions = (sale: Sale) => {
     const status = normalizeSaleStatus(sale.status)
     return (
-      <div className="flex sm:flex-col gap-2 flex-shrink-0">
+      <div className="flex flex-wrap gap-1.5 flex-shrink-0">
         {status === 'pending_confirmation' && (
           <>
-            <button onClick={() => handleConfirmOrder(sale)} className="flex items-center gap-1.5 text-sm text-green-700 transition-colors bg-green-100 hover:bg-green-200 px-3 py-2 rounded-xl">
-              <Check size={14} /> {t('admin.confirmOrder')}
+            <button onClick={() => handleConfirmOrder(sale)} className="flex items-center gap-1 text-xs font-semibold text-green-700 border border-green-300 bg-transparent hover:bg-green-50 transition-colors px-2.5 py-1.5 rounded-lg">
+              <Check size={13} /> {t('admin.confirmOrder')}
             </button>
-            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
-              <Ban size={14} /> {t('admin.rejectOrder')}
+            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1 text-xs font-semibold text-gray-600 border border-gray-300 bg-transparent hover:bg-gray-100 transition-colors px-2.5 py-1.5 rounded-lg">
+              <Ban size={13} /> {t('admin.rejectOrder')}
             </button>
           </>
         )}
@@ -375,47 +418,50 @@ export default function Admin() {
             <select
               value=""
               onChange={e => { if (e.target.value) handleMarkPaid(sale, e.target.value as PaymentMethod) }}
-              className="text-xs font-semibold px-3 py-2 rounded-xl border-0 cursor-pointer bg-amber-100 text-amber-700"
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-green-300 bg-transparent text-green-700 cursor-pointer"
             >
               <option value="">{t('admin.markPaid')}</option>
               <option value="zelle">{t('admin.paymentMethodZelle')}</option>
               <option value="cash">{t('admin.paymentMethodCash')}</option>
               <option value="other">{t('admin.paymentMethodOther')}</option>
             </select>
-            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl">
-              <Ban size={14} /> {t('admin.cancelOrder')}
+            <button onClick={() => handleMarkDeliveredCash(sale)} className="flex items-center gap-1 text-xs font-semibold text-blue-700 border border-blue-300 bg-transparent hover:bg-blue-50 transition-colors px-2.5 py-1.5 rounded-lg">
+              <Package size={13} /> {t('admin.markDeliveredCash')}
+            </button>
+            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1 text-xs font-semibold text-gray-600 border border-gray-300 bg-transparent hover:bg-gray-100 transition-colors px-2.5 py-1.5 rounded-lg">
+              <Ban size={13} /> {t('admin.cancelOrder')}
             </button>
           </>
         )}
         {status === 'in_progress' && (
           <>
-            <button onClick={() => handleMarkDelivered(sale)} className="flex items-center gap-1.5 text-sm text-green-700 transition-colors bg-green-100 hover:bg-green-200 px-3 py-2 rounded-xl">
-              <Package size={14} /> {t('admin.markDelivered')}
+            <button onClick={() => handleMarkDelivered(sale)} className="flex items-center gap-1 text-xs font-semibold text-blue-700 border border-blue-300 bg-transparent hover:bg-blue-50 transition-colors px-2.5 py-1.5 rounded-lg">
+              <Package size={13} /> {t('admin.markDelivered')}
             </button>
-            <button onClick={() => sendPaymentConfirmation(sale)} className="flex items-center gap-1.5 text-sm text-brown-mid transition-colors bg-beige-light hover:bg-rose-light px-3 py-2 rounded-xl">
-              <Send size={14} /> {t('admin.resendConfirmation')}
+            <button onClick={() => sendPaymentConfirmation(sale)} className="flex items-center gap-1 text-xs font-semibold text-brown-mid border border-rose bg-transparent hover:bg-beige-light transition-colors px-2.5 py-1.5 rounded-lg">
+              <Send size={13} /> {t('admin.resendConfirmation')}
             </button>
           </>
         )}
         {status === 'delivered' && (
-          <button onClick={() => sendPaymentConfirmation(sale)} className="flex items-center gap-1.5 text-sm text-brown-mid transition-colors bg-beige-light hover:bg-rose-light px-3 py-2 rounded-xl">
-            <Send size={14} /> {t('admin.resendConfirmation')}
+          <button onClick={() => sendThankYouMessage(sale)} className="flex items-center gap-1 text-xs font-semibold text-brown-mid border border-rose bg-transparent hover:bg-beige-light transition-colors px-2.5 py-1.5 rounded-lg">
+            <Send size={13} /> {t('admin.resendThankYou')}
           </button>
         )}
         <button
           onClick={() => { if (!sale.paid) handleDeleteSale(sale) }}
           disabled={sale.paid}
           title={sale.paid ? t('admin.cannotDeletePaid') : undefined}
-          className="flex items-center gap-1.5 text-sm text-burgundy transition-colors bg-rose-light hover:bg-rose px-3 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-light"
+          className="flex items-center gap-1 text-xs font-semibold text-burgundy border border-burgundy/30 bg-transparent hover:bg-rose-light transition-colors px-2.5 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
         >
-          <Trash2 size={14} /> {t('admin.delete')}
+          <Trash2 size={13} /> {t('admin.delete')}
         </button>
       </div>
     )
   }
 
   const renderPaidBadge = (sale: Sale) => sale.paid && (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+    <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-green-300 text-green-700 flex items-center gap-1">
       <CheckCircle2 size={12} />
       {t('admin.paid')}{sale.paymentMethod && ` · ${t(`admin.paymentMethod${sale.paymentMethod.charAt(0).toUpperCase()}${sale.paymentMethod.slice(1)}`)}`}
     </span>
@@ -708,21 +754,21 @@ export default function Admin() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
               <div className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
-                <div className="bg-green-100 text-green-700 rounded-xl p-2.5"><DollarSign size={20} /></div>
+                <div className="border border-rose text-wine rounded-xl p-2.5"><DollarSign size={20} /></div>
                 <div>
                   <p className="text-xs text-brown-mid">{t('admin.salesTotalRevenue')}</p>
                   <p className="text-xl font-bold text-brown-dark">${salesSummary.totalRevenue.toFixed(2)}</p>
                 </div>
               </div>
               <div className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
-                <div className="bg-rose-light text-wine rounded-xl p-2.5"><Receipt size={20} /></div>
+                <div className="border border-rose text-wine rounded-xl p-2.5"><Receipt size={20} /></div>
                 <div>
                   <p className="text-xs text-brown-mid">{t('admin.salesTotalOrders')}</p>
                   <p className="text-xl font-bold text-brown-dark">{salesSummary.totalOrders}</p>
                 </div>
               </div>
               <div className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
-                <div className="bg-amber-100 text-amber-700 rounded-xl p-2.5"><CalendarDays size={20} /></div>
+                <div className="border border-rose text-wine rounded-xl p-2.5"><CalendarDays size={20} /></div>
                 <div>
                   <p className="text-xs text-brown-mid">{t('admin.salesMonthRevenue')}</p>
                   <p className="text-xl font-bold text-brown-dark">${salesSummary.monthRevenue.toFixed(2)}</p>
@@ -731,38 +777,66 @@ export default function Admin() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-              <div className="flex gap-2 flex-wrap">
-                {(['all', ...SALE_STATUSES] as SalesFilter[]).map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setSalesFilter(f)}
-                    className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-                      salesFilter === f ? 'bg-brown-dark text-cream-light' : 'bg-rose-light text-brown-mid hover:bg-rose'
-                    }`}
-                  >
-                    {f === 'all' ? t('admin.salesStatusAll') : t(`admin.${statusLabelKey[f]}`)}
-                  </button>
-                ))}
+              <div className="flex gap-3 flex-wrap items-center">
+                <div className="flex items-center gap-2 bg-cream-light border border-rose rounded-xl pl-3 pr-2 py-2 flex-shrink-0">
+                  <Filter size={15} className="text-brown-mid flex-shrink-0" />
+                  <div className="relative flex items-center">
+                    <select
+                      value={salesFilter}
+                      onChange={e => selectSalesFilter(e.target.value as SalesFilter)}
+                      className="appearance-none bg-transparent text-sm font-semibold text-brown-dark focus:outline-none cursor-pointer pr-4"
+                    >
+                      <option value="active">{t('admin.salesStatusActive')}</option>
+                      <option value="all">{t('admin.salesStatusAll')}</option>
+                      {SALE_STATUSES.map(s => (
+                        <option key={s} value={s}>{t(`admin.${statusLabelKey[s]}`)}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-0 text-brown-light pointer-events-none" />
+                  </div>
+                  <span className="w-px h-4 bg-rose flex-shrink-0" />
+                  <div className="relative flex items-center">
+                    <select
+                      value={monthFilter}
+                      onChange={e => setMonthFilter(e.target.value)}
+                      className="appearance-none bg-transparent text-sm font-semibold text-brown-dark focus:outline-none cursor-pointer pr-4"
+                    >
+                      <option value="">{t('admin.allMonths')}</option>
+                      <option value={getCurrentMonthKey()}>{t('admin.thisMonth')}</option>
+                      {monthOptions.filter(m => m !== getCurrentMonthKey()).map(m => (
+                        <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-0 text-brown-light pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-cream-light border border-rose rounded-xl pl-3 pr-2 py-2 flex-shrink-0">
+                  <ArrowUpDown size={15} className="text-brown-mid flex-shrink-0" />
+                  <div className="relative flex items-center">
+                    <select
+                      value={salesSort}
+                      onChange={e => selectSalesSort(e.target.value as SalesSort)}
+                      className="appearance-none bg-transparent text-sm font-semibold text-brown-dark focus:outline-none cursor-pointer pr-4"
+                    >
+                      {(Object.keys(SALES_SORT_LABEL) as SalesSort[]).map(s => (
+                        <option key={s} value={s}>{SALES_SORT_LABEL[s]}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-0 text-brown-light pointer-events-none" />
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2 items-center">
-                <select
-                  value={salesSort}
-                  onChange={e => selectSalesSort(e.target.value as SalesSort)}
-                  className="text-sm font-medium px-3 py-2 rounded-xl border border-rose bg-cream-light text-brown-dark cursor-pointer"
-                >
-                  {(Object.keys(SALES_SORT_LABEL) as SalesSort[]).map(s => (
-                    <option key={s} value={s}>{SALES_SORT_LABEL[s]}</option>
-                  ))}
-                </select>
                 <button
                   onClick={() => exportSalesToExcel(sortedSales, false)}
                   disabled={filteredSales.length === 0}
-                  className="btn-secondary flex items-center gap-2 py-2.5 px-5 text-sm disabled:opacity-50"
+                  className="btn-secondary flex items-center gap-1.5 py-2 px-3.5 text-sm disabled:opacity-50"
                 >
-                  <Download size={16} /> {t('admin.downloadExcel')}
+                  <Download size={15} /> {t('admin.downloadExcel')}
                 </button>
-                <button onClick={openAddSale} className="btn-primary flex items-center gap-2 py-2.5 px-5 text-sm">
-                  <PlusCircle size={18} /> {t('admin.addSale')}
+                <button onClick={openAddSale} className="btn-primary flex items-center gap-1.5 py-2 px-3.5 text-sm">
+                  <PlusCircle size={16} /> {t('admin.addSale')}
                 </button>
               </div>
             </div>
@@ -883,27 +957,27 @@ export default function Admin() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <h3 className="font-bold text-brown-dark">{sale.customerName}</h3>
-                                <p className="text-xs text-wine font-medium">{sale.productName} × {sale.quantity}</p>
+                                <h3 className="font-bold text-black">{sale.customerName}</h3>
+                                <p className="text-xs text-black font-medium">{sale.productName} × {sale.quantity}</p>
                               </div>
-                              <span className="text-lg font-bold text-wine flex-shrink-0">${sale.total.toFixed(2)}</span>
+                              <span className="text-lg font-bold text-black flex-shrink-0">${sale.total.toFixed(2)}</span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 mt-2">
-                              <span className="text-xs text-brown-mid">{sale.date}</span>
-                              {sale.phone && <span className="text-xs text-brown-mid">· {sale.phone}</span>}
-                              {sale.email && <span className="text-xs text-brown-mid">· {sale.email}</span>}
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sale.source === 'web' ? 'bg-blue-100 text-blue-700' : 'bg-beige-light text-brown-mid'}`}>
+                              <span className="text-xs text-black">{sale.date}</span>
+                              {sale.phone && <span className="text-xs text-black">· {sale.phone}</span>}
+                              {sale.email && <span className="text-xs text-black">· {sale.email}</span>}
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
                                 {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
                               </span>
                               {sale.source === 'web' && (
-                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${sale.contactMethod === 'email' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
                                   {sale.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
                                   {sale.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
                                 </span>
                               )}
                               {renderPaidBadge(sale)}
                             </div>
-                            {sale.notes && <p className="text-brown-mid text-xs mt-1.5 italic">"{sale.notes}"</p>}
+                            {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
                           </div>
                           {renderSaleActions(sale)}
                         </div>
@@ -915,24 +989,24 @@ export default function Admin() {
                     <div key={first.orderId} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
                       <div className="flex items-start justify-between gap-2 pb-3 border-b border-rose/60">
                         <div>
-                          <h3 className="font-bold text-brown-dark">{first.customerName}</h3>
+                          <h3 className="font-bold text-black">{first.customerName}</h3>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className="text-xs text-brown-mid">{first.date}</span>
-                            {first.phone && <span className="text-xs text-brown-mid">· {first.phone}</span>}
-                            {first.email && <span className="text-xs text-brown-mid">· {first.email}</span>}
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${first.source === 'web' ? 'bg-blue-100 text-blue-700' : 'bg-beige-light text-brown-mid'}`}>
+                            <span className="text-xs text-black">{first.date}</span>
+                            {first.phone && <span className="text-xs text-black">· {first.phone}</span>}
+                            {first.email && <span className="text-xs text-black">· {first.email}</span>}
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
                               {first.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
                             </span>
                             {first.source === 'web' && (
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${first.contactMethod === 'email' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
                                 {first.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
                                 {first.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
                               </span>
                             )}
                           </div>
-                          {first.notes && <p className="text-brown-mid text-xs mt-1.5 italic">"{first.notes}"</p>}
+                          {first.notes && <p className="text-black text-xs mt-1.5 italic">"{first.notes}"</p>}
                         </div>
-                        <span className="text-lg font-bold text-wine flex-shrink-0">${groupTotal.toFixed(2)}</span>
+                        <span className="text-lg font-bold text-black flex-shrink-0">${groupTotal.toFixed(2)}</span>
                       </div>
 
                       <div className="flex flex-col gap-3">
@@ -942,8 +1016,8 @@ export default function Admin() {
                             <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-sm font-semibold text-brown-dark">{sale.productName} × {sale.quantity}</p>
-                                  <span className="text-sm font-bold text-wine">${sale.total.toFixed(2)}</span>
+                                  <p className="text-sm font-semibold text-black">{sale.productName} × {sale.quantity}</p>
+                                  <span className="text-sm font-bold text-black">${sale.total.toFixed(2)}</span>
                                 </div>
                                 {renderPaidBadge(sale)}
                               </div>

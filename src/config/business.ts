@@ -1,11 +1,11 @@
-const WHATSAPP_NUMBER = '18643465333'
+const WHATSAPP_NUMBER = '18643812389'
 
 export const business = {
   name: "Ani's Artisan Bakery",
   phone: {
     whatsappNumber: WHATSAPP_NUMBER,
     whatsappLink: `https://wa.me/${WHATSAPP_NUMBER}`,
-    display: '+1 (864) 346-5333',
+    display: '+1 (864) 381-2389',
   },
   instagram: {
     handle: '@anisartisanbakery',

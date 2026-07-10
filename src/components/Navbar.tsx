@@ -84,7 +84,12 @@ export default function Navbar() {
             <span className="text-base">{i18n.language === 'es' ? '🇪🇸' : '🇺🇸'}</span>
             {i18n.language === 'es' ? 'ES' : 'EN'}
           </button>
-          <button className="text-brown-dark" onClick={() => setOpen(!open)}>
+          <button
+            className="text-brown-dark"
+            onClick={() => setOpen(!open)}
+            aria-label={open ? (i18n.language === 'es' ? 'Cerrar menú' : 'Close menu') : (i18n.language === 'es' ? 'Abrir menú' : 'Open menu')}
+            aria-expanded={open}
+          >
             {open ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>

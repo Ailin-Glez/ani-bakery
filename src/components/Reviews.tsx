@@ -15,23 +15,29 @@ function StarRating({ rating, interactive = false, onChange }: {
   const display = interactive ? (hovered || rating) : rating
 
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1" role={interactive ? undefined : 'img'} aria-label={interactive ? undefined : `Calificación: ${rating} de 5 estrellas`}>
       {Array.from({ length: 5 }).map((_, i) => {
         const val = i + 1
-        return (
+        const star = (
+          <Star
+            size={interactive ? 28 : 16}
+            className={val <= display ? 'text-wine fill-wine' : 'text-rose'}
+          />
+        )
+        return interactive ? (
           <button
             key={i}
-            type={interactive ? 'button' : undefined}
-            onClick={interactive && onChange ? () => onChange(val) : undefined}
-            onMouseEnter={interactive ? () => setHovered(val) : undefined}
-            onMouseLeave={interactive ? () => setHovered(0) : undefined}
-            className={interactive ? 'cursor-pointer' : 'cursor-default'}
+            type="button"
+            aria-label={`Calificar con ${val} estrella${val > 1 ? 's' : ''}`}
+            onClick={onChange ? () => onChange(val) : undefined}
+            onMouseEnter={() => setHovered(val)}
+            onMouseLeave={() => setHovered(0)}
+            className="cursor-pointer"
           >
-            <Star
-              size={interactive ? 28 : 16}
-              className={val <= display ? 'text-wine fill-wine' : 'text-rose'}
-            />
+            {star}
           </button>
+        ) : (
+          <span key={i} aria-hidden="true">{star}</span>
         )
       })}
     </div>

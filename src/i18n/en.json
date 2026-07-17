@@ -105,6 +105,7 @@
   "admin": {
     "title": "Admin Panel",
     "subtitle": "Ani's Artisan Bakery",
+    "emailLabel": "Email",
     "passwordLabel": "Password",
     "loginBtn": "Login",
     "wrongPassword": "Wrong password.",

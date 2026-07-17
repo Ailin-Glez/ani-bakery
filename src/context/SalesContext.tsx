@@ -4,6 +4,7 @@ import {
   doc, orderBy, query,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { useAuth } from './AuthContext'
 import type { Sale, PaymentMethod } from '../types'
 
 interface SalesContextType {
@@ -21,12 +22,18 @@ interface SalesContextType {
 const SalesContext = createContext<SalesContextType | null>(null)
 
 export function SalesProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchSales()
-  }, [])
+    if (user) {
+      fetchSales()
+    } else {
+      setSales([])
+      setLoading(false)
+    }
+  }, [user])
 
   const fetchSales = async () => {
     setLoading(true)

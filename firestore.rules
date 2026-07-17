@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    // Products: public catalog, only the admin can add/edit/delete.
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Reviews: anyone can submit a new review (always unapproved), but only
+    // approved reviews are publicly readable. Approving/rejecting/deleting
+    // requires the admin. isAdmin() also covers the panel's unfiltered read.
+    match /reviews/{reviewId} {
+      allow read: if isAdmin() || resource.data.approved == true;
+      allow create: if request.resource.data.approved == false;
+      allow update, delete: if isAdmin();
+    }
+
+    // Sales: customers can create their own order (always starting unpaid,
+    // pending confirmation), but only the admin can read the sales list or
+    // change status/payment/delete an existing sale.
+    match /sales/{saleId} {
+      allow read: if isAdmin();
+      allow create: if request.resource.data.status == 'pending_confirmation'
+                    && request.resource.data.paid == false
+                    && request.resource.data.source == 'web';
+      allow update, delete: if isAdmin();
+    }
+
+    // Out-of-office ranges: public read (used to block dates in the order
+    // form), only the admin can add/remove periods.
+    match /outOfOffice/{rangeId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

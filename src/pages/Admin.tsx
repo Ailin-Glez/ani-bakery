@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductContext'
 import { useReviews } from '../context/ReviewContext'
 import { useSales } from '../context/SalesContext'
@@ -10,8 +11,6 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail } from '../config/business'
 import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
 import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string
 
 const EMPTY_PRODUCT: Omit<Product, 'id'> = {
   name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', categoryEn: '', available: true,
@@ -79,10 +78,12 @@ export default function Admin() {
   const { i18n } = useTranslation()
   // Admin panel always renders in Spanish, independent of the public site's language toggle.
   const t = i18n.getFixedT('es')
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin-authed') === '1')
+  const { user, authLoading, login, logout } = useAuth()
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem('admin-tab') as Tab) || 'products')
   const [reviewTab, setReviewTab] = useState<ReviewTab>(() => (sessionStorage.getItem('admin-review-tab') as ReviewTab) || 'pending')
   const [editing, setEditing] = useState<Product | null>(null)
@@ -126,10 +127,17 @@ export default function Admin() {
   const selectSalesPageSize = (next: number) => { sessionStorage.setItem('admin-sales-page-size', String(next)); setSalesPageSize(next); goToSalesPage(1) }
   const changeMonthFilter = (next: string) => { setMonthFilter(next); goToSalesPage(1) }
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (password === ADMIN_PASSWORD) { sessionStorage.setItem('admin-authed', '1'); setAuthed(true); setError('') }
-    else setError(t('admin.wrongPassword'))
+    setError('')
+    setLoggingIn(true)
+    try {
+      await login(email, password)
+    } catch {
+      setError(t('admin.wrongPassword'))
+    } finally {
+      setLoggingIn(false)
+    }
   }
 
   const openEdit = (product: Product) => {
@@ -555,7 +563,11 @@ export default function Admin() {
   }
 
   // ── Login ──
-  if (!authed) {
+  if (authLoading) {
+    return <div className="min-h-screen bg-cream" />
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center px-4">
         <div className="bg-cream-light rounded-3xl shadow-xl p-10 w-full max-w-sm text-center">
@@ -563,6 +575,14 @@ export default function Admin() {
           <h1 className="text-2xl font-bold text-brown-dark mb-1">{t('admin.title')}</h1>
           <p className="text-brown-mid text-sm mb-6">{t('admin.subtitle')}</p>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder={t('admin.emailLabel')}
+              className={inputClass}
+              autoFocus
+            />
             <div className="relative">
               <input
                 type={showPass ? 'text' : 'password'}
@@ -570,14 +590,13 @@ export default function Admin() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder={t('admin.passwordLabel')}
                 className={inputClass}
-                autoFocus
               />
               <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brown-mid hover:text-brown-dark">
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             {error && <p className="text-wine text-sm">{error}</p>}
-            <button type="submit" className="btn-primary w-full text-center">{t('admin.loginBtn')}</button>
+            <button type="submit" disabled={loggingIn} className="btn-primary w-full text-center disabled:opacity-60">{t('admin.loginBtn')}</button>
           </form>
           <a href="/" className="mt-4 inline-block text-sm text-brown-mid hover:text-brown-dark">{t('admin.backToStore')}</a>
         </div>
@@ -599,7 +618,7 @@ export default function Admin() {
         </div>
         <div className="flex items-center gap-4">
           <a href="/" className="text-sm text-brown-mid hover:text-brown-dark">{t('admin.viewStore')}</a>
-          <button onClick={() => { sessionStorage.removeItem('admin-authed'); setAuthed(false) }} className="flex items-center gap-2 text-sm text-wine hover:text-brown-dark transition-colors">
+          <button onClick={() => logout()} className="flex items-center gap-2 text-sm text-wine hover:text-brown-dark transition-colors">
             <LogOut size={16} /> {t('admin.logout')}
           </button>
         </div>

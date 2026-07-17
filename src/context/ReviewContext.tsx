@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, orderBy, query, serverTimestamp,
+  doc, query, where, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { useAuth } from './AuthContext'
 
 export interface Review {
   id: string
@@ -28,18 +29,27 @@ interface ReviewContextType {
 const ReviewContext = createContext<ReviewContextType | null>(null)
 
 export function ReviewProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchReviews()
-  }, [])
+  }, [user])
 
   const fetchReviews = async () => {
     setLoading(true)
-    const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'))
+    // Anonymous visitors can only read approved reviews (Firestore rules enforce this);
+    // logged-in admins get the full list, including pending ones awaiting moderation.
+    // Sorted client-side to avoid requiring a composite index for the filtered query.
+    const q = user
+      ? query(collection(db, 'reviews'))
+      : query(collection(db, 'reviews'), where('approved', '==', true))
     const snap = await getDocs(q)
-    setReviews(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Review))
+    const sorted = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }) as Review & { createdAt?: { toMillis: () => number } })
+      .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
+    setReviews(sorted)
     setLoading(false)
   }
 

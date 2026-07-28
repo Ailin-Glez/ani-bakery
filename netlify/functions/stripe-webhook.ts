@@ -45,6 +45,15 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
     paidAt: now,
     language: metadata.language === 'en' ? 'en' : 'es',
   })))
+
+  const invoiceId = typeof fullSession.invoice === 'string' ? fullSession.invoice : fullSession.invoice?.id
+  if (invoiceId) {
+    try {
+      await stripe.invoices.sendInvoice(invoiceId)
+    } catch (err) {
+      console.error('stripe-webhook: failed to email invoice:', err)
+    }
+  }
 }
 
 async function handleChargeRefunded(charge: Stripe.Charge) {

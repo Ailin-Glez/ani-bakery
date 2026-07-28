@@ -9,6 +9,7 @@ export interface Product {
   category: string
   categoryEn?: string
   available: boolean
+  maxQuantity?: number
 }
 
 export interface Review {
@@ -48,6 +49,7 @@ export interface Sale {
   date: string
   notes: string
   shippingAddress?: string
+  stripePaymentIntentId?: string
   status: SaleStatus
   source: SaleSource
   createdAt: string

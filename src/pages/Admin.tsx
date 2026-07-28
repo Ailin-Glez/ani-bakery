@@ -142,7 +142,7 @@ export default function Admin() {
 
   const openEdit = (product: Product) => {
     setEditing(product)
-    setFormData({ name: product.name, description: product.description, nameEn: product.nameEn ?? '', descriptionEn: product.descriptionEn ?? '', price: product.price, image: product.image, category: product.category, categoryEn: product.categoryEn ?? '', available: product.available })
+    setFormData({ name: product.name, description: product.description, nameEn: product.nameEn ?? '', descriptionEn: product.descriptionEn ?? '', price: product.price, image: product.image, category: product.category, categoryEn: product.categoryEn ?? '', available: product.available, maxQuantity: product.maxQuantity })
     setAdding(false)
   }
 
@@ -153,6 +153,7 @@ export default function Admin() {
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target
     if (type === 'checkbox') setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }))
+    else if (name === 'maxQuantity') setFormData(prev => ({ ...prev, maxQuantity: value === '' ? undefined : Number(value) }))
     else setFormData(prev => ({ ...prev, [name]: name === 'price' ? Number(value) : value }))
   }
 
@@ -469,8 +470,8 @@ export default function Admin() {
             <button onClick={() => handleMarkDelivered(sale)} className="flex items-center gap-1 text-xs font-semibold text-blue-700 border border-blue-300 bg-transparent hover:bg-blue-50 transition-colors px-2.5 py-1.5 rounded-lg">
               <Package size={13} /> {t('admin.markDelivered')}
             </button>
-            <button onClick={() => sendPaymentConfirmation(sale)} className="flex items-center gap-1 text-xs font-semibold text-brown-mid border border-rose bg-transparent hover:bg-beige-light transition-colors px-2.5 py-1.5 rounded-lg">
-              <Send size={13} /> {t('admin.resendConfirmation')}
+            <button onClick={() => handleCancelOrder(sale)} className="flex items-center gap-1 text-xs font-semibold text-gray-600 border border-gray-300 bg-transparent hover:bg-gray-100 transition-colors px-2.5 py-1.5 rounded-lg">
+              <Ban size={13} /> {t('admin.cancelOrder')}
             </button>
           </>
         )}
@@ -492,9 +493,16 @@ export default function Admin() {
   }
 
   const renderPaidBadge = (sale: Sale) => sale.paid && (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-green-300 text-green-700 flex items-center gap-1">
-      <CheckCircle2 size={12} />
-      {t('admin.paid')}{sale.paymentMethod && ` · ${t(`admin.paymentMethod${sale.paymentMethod.charAt(0).toUpperCase()}${sale.paymentMethod.slice(1)}`)}`}
+    <span className="flex items-center gap-1">
+      <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-green-300 text-green-700 flex items-center gap-1">
+        <CheckCircle2 size={12} />
+        {t('admin.paid')}
+      </span>
+      {sale.paymentMethod && (
+        <span className="text-[10px] text-green-700/70 leading-none">
+          {t(`admin.paymentMethod${sale.paymentMethod.charAt(0).toUpperCase()}${sale.paymentMethod.slice(1)}`)}
+        </span>
+      )}
     </span>
   )
 
@@ -706,6 +714,12 @@ export default function Admin() {
                         <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldCategory')} *</label>
                         <input name="category" value={formData.category} onChange={handleFormChange} required placeholder={t('admin.fieldCategoryPlaceholder')} className={inputClass} />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldMaxQuantity')}</label>
+                      <input type="number" name="maxQuantity" value={formData.maxQuantity ?? ''} onChange={handleFormChange} min={1} step={1} placeholder={t('admin.fieldMaxQuantityPlaceholder')} className={inputClass} />
+                      <p className="text-xs text-brown-light mt-1">{t('admin.fieldMaxQuantityHint')}</p>
                     </div>
 
                     {/* Image upload */}

@@ -43,6 +43,8 @@ export const handler: Handler = async event => {
       })),
       phone_number_collection: { enabled: true },
       shipping_address_collection: { allowed_countries: ['US'] },
+      customer_creation: 'always',
+      invoice_creation: { enabled: true },
       metadata,
       success_url: successUrl,
       cancel_url: cancelUrl,

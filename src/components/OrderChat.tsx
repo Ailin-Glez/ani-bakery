@@ -1,28 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2, Mail, Loader2 } from 'lucide-react'
+import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
-import { useSales } from '../context/SalesContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, createCheckoutSession, openWhatsAppLink, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
-import type { ContactMethod } from '../types'
+import { business, createCheckoutSession, isOrderDateValid, getBlockedRange } from '../config/business'
 
 interface CartItem {
   product: string
   productEn: string
   quantity: number
   unitPrice: number
+  maxQuantity?: number
 }
 
 interface DetailsForm {
-  name: string
-  phone: string
-  email: string
   date: string
   notes: string
 }
 
-const EMPTY_DETAILS: DetailsForm = { name: '', phone: '', email: '', date: '', notes: '' }
+const EMPTY_DETAILS: DetailsForm = { date: '', notes: '' }
 
 const STEPS = ['product', 'details', 'confirm'] as const
 type Step = typeof STEPS[number]
@@ -55,21 +51,15 @@ function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?
 export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const { t, i18n } = useTranslation()
   const { products } = useProducts()
-  const { addSale } = useSales()
   const { ranges: outOfOfficeRanges } = useOutOfOffice()
   const [step, setStep] = useState<Step>('product')
   const [cart, setCart] = useState<CartItem[]>([])
   const [customName, setCustomName] = useState('')
   const [addingCustom, setAddingCustom] = useState(false)
   const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
-  const [contactMethod, setContactMethod] = useState<ContactMethod>('phone')
-  const [sent, setSent] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(false)
-  const nameInputRef = useRef<HTMLInputElement>(null)
   const dateInputRef = useRef<HTMLInputElement>(null)
-  const phoneInputRef = useRef<HTMLInputElement>(null)
-  const emailInputRef = useRef<HTMLInputElement>(null)
 
   const isEn = i18n.language === 'en'
   const availableProducts = products.filter(p => p.available)
@@ -82,23 +72,26 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         productEn: matched?.nameEn || initialProduct,
         quantity: 1,
         unitPrice: matched?.price ?? 0,
+        maxQuantity: matched?.maxQuantity,
       }])
       setStep('product')
     }
   }, [open, initialProduct, products])
 
-  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setContactMethod('phone'); setCustomName(''); setAddingCustom(false); setStep('product'); setSent(false); setSending(false); setSendError(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
-  const addToCart = (p: { name: string; nameEn?: string; price: number }) => {
+  const addToCart = (p: { name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
     setCart(prev => {
       const idx = prev.findIndex(item => item.product === p.name)
       if (idx >= 0) {
+        const current = prev[idx]
+        if (current.maxQuantity != null && current.quantity >= current.maxQuantity) return prev
         const next = [...prev]
-        next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 }
+        next[idx] = { ...current, quantity: current.quantity + 1 }
         return next
       }
-      return [...prev, { product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price }]
+      return [...prev, { product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price, maxQuantity: p.maxQuantity }]
     })
   }
 
@@ -111,7 +104,11 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
   const changeQuantity = (product: string, delta: number) => {
     setCart(prev => prev
-      .map(item => item.product === product ? { ...item, quantity: item.quantity + delta } : item)
+      .map(item => {
+        if (item.product !== product) return item
+        const quantity = item.maxQuantity != null ? Math.min(item.quantity + delta, item.maxQuantity) : item.quantity + delta
+        return { ...item, quantity }
+      })
       .filter(item => item.quantity > 0))
   }
 
@@ -133,36 +130,14 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       dateInputRef.current?.setCustomValidity(getDateValidityMessage(value))
       e.target.reportValidity()
     }
-    if (name === 'name') nameInputRef.current?.setCustomValidity('')
-    if (name === 'email') emailInputRef.current?.setCustomValidity('')
-    if (name === 'phone') {
-      phoneInputRef.current?.setCustomValidity('')
-      setDetails(prev => ({ ...prev, phone: formatUSPhoneInput(value) }))
-      return
-    }
     setDetails(prev => ({ ...prev, [name]: value }))
   }
 
   const goToConfirm = () => {
-    if (contactMethod !== 'stripe' && !details.name.trim()) {
-      nameInputRef.current?.setCustomValidity(t('orders.nameError'))
-      nameInputRef.current?.reportValidity()
-      return
-    }
     const dateMessage = getDateValidityMessage(details.date)
     if (dateMessage) {
       dateInputRef.current?.setCustomValidity(dateMessage)
       dateInputRef.current?.reportValidity()
-      return
-    }
-    if (contactMethod === 'phone' && !isValidUSPhone(details.phone)) {
-      phoneInputRef.current?.setCustomValidity(t('orders.phoneError'))
-      phoneInputRef.current?.reportValidity()
-      return
-    }
-    if (contactMethod === 'email' && !isValidEmail(details.email)) {
-      emailInputRef.current?.setCustomValidity(t('orders.emailError'))
-      emailInputRef.current?.reportValidity()
       return
     }
     setStep('confirm')
@@ -173,74 +148,21 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const today = new Date().toISOString().slice(0, 10)
   const upcomingOutOfOffice = outOfOfficeRanges.filter(r => r.endDate >= today).slice(0, 2)
 
-  const recordSale = () => {
-    const orderId = crypto.randomUUID()
-    cart.forEach(item => {
-      addSale({
-        orderId,
-        customerName: details.name,
-        phone: contactMethod === 'phone' ? details.phone : '',
-        email: contactMethod === 'email' ? details.email : '',
-        contactMethod,
-        productName: item.product,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.unitPrice * item.quantity,
-        date: details.date,
-        notes: details.notes,
-        status: 'pending_confirmation',
-        source: 'web',
-        paid: false,
-        language: isEn ? 'en' : 'es',
-      })
-    })
-  }
-
   const submitOrder = async () => {
-    if (contactMethod === 'stripe') {
-      setSending(true)
-      setSendError(false)
-      const url = await createCheckoutSession({
-        items: cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice })),
-        successUrl: `${window.location.origin}/?checkout=success`,
-        cancelUrl: `${window.location.origin}/?checkout=cancel`,
-        metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es' },
-      })
-      if (!url) {
-        setSending(false)
-        setSendError(true)
-        return
-      }
-      window.location.href = url
-      return
-    }
-
-    const items = cart.map(item => ({
-      product: isEn && item.productEn ? item.productEn : item.product,
-      quantity: item.quantity,
-    }))
-    const contact = { method: contactMethod, value: contactMethod === 'phone' ? details.phone : details.email }
-
-    if (contactMethod === 'phone') {
-      const message = buildOrderMessage({ name: details.name, contact, items, date: details.date, notes: details.notes }, isEn)
-      openWhatsAppLink(buildWhatsAppOrderLink(message))
-      recordSale()
-      setSent(true)
-      return
-    }
-
     setSending(true)
     setSendError(false)
-    const body = buildOrderEmailBody({ name: details.name, contact, items, date: details.date, notes: details.notes }, isEn)
-    const subject = isEn ? `Order from ${details.name}` : `Encargo de ${details.name}`
-    const ok = await sendOrderEmail({ subject, message: body, replyTo: details.email, fromName: details.name })
-    setSending(false)
-    if (!ok) {
+    const url = await createCheckoutSession({
+      items: cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice })),
+      successUrl: `${window.location.origin}/?checkout=success`,
+      cancelUrl: `${window.location.origin}/?checkout=cancel`,
+      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es' },
+    })
+    if (!url) {
+      setSending(false)
       setSendError(true)
       return
     }
-    recordSale()
-    setSent(true)
+    window.location.href = url
   }
 
   const inputClass = 'w-full bg-cream border border-rose rounded-xl px-4 py-2.5 text-brown-dark placeholder-brown-mid/40 focus:outline-none focus:border-wine focus:ring-1 focus:ring-wine/30 transition-colors text-sm'
@@ -282,16 +204,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         {/* Messages area */}
         <div className="bg-[#f0e6d8] flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-4 min-h-0">
 
-          {sent ? (
-            <div className="flex flex-col items-center justify-center flex-1 gap-4 py-10 text-center">
-              <div className="text-6xl">🥳</div>
-              <p className="font-bold text-brown-dark text-xl">{t('orders.successTitle')}</p>
-              <p className="text-brown-mid text-sm">{t(contactMethod === 'phone' ? 'orders.successText' : 'orders.successTextEmail')}</p>
-              <button onClick={close} className="btn-primary mt-2 text-sm py-2.5 px-6">
-                {isEn ? 'Close' : 'Cerrar'}
-              </button>
-            </div>
-          ) : step === 'product' ? (
+          {step === 'product' ? (
             <>
               <ChatBubble>
                 {isEn ? '👋 Hi! What would you like to order? Add as many products as you need' : '👋 ¡Hola! ¿Qué te gustaría encargar? Agrega todos los productos que necesites'}
@@ -300,19 +213,26 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               <div className="flex flex-col gap-2 mt-2">
                 {availableProducts.map(p => {
                   const inCart = cart.find(item => item.product === p.name)
+                  const atMax = !!inCart && p.maxQuantity != null && inCart.quantity >= p.maxQuantity
                   return (
                     <button
                       key={p.id}
                       onClick={() => addToCart(p)}
+                      disabled={atMax}
                       className={`text-left px-4 py-3 rounded-2xl border-2 transition-all text-sm font-medium flex items-center justify-between gap-2 ${
                         inCart
                           ? 'border-wine bg-wine text-cream-light'
                           : 'border-rose bg-cream-light text-brown-dark hover:border-wine/60'
-                      }`}
+                      } ${atMax ? 'cursor-not-allowed opacity-90' : ''}`}
                     >
                       <span>
                         <span className="font-semibold">{isEn && p.nameEn ? p.nameEn : p.name}</span>
                         <span className="ml-2 font-normal opacity-70">${p.price}</span>
+                        {p.maxQuantity != null && (
+                          <span className="ml-2 font-normal opacity-70 text-xs">
+                            ({isEn ? 'max' : 'máx.'} {p.maxQuantity})
+                          </span>
+                        )}
                       </span>
                       {inCart
                         ? <span className="text-xs font-bold opacity-90">{inCart.quantity} ✓</span>
@@ -359,7 +279,11 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                           <Minus size={12} />
                         </button>
                         <span className="w-5 text-center font-bold">{item.quantity}</span>
-                        <button onClick={() => changeQuantity(item.product, 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-brown-dark/10 hover:bg-brown-dark/20">
+                        <button
+                          onClick={() => changeQuantity(item.product, 1)}
+                          disabled={item.maxQuantity != null && item.quantity >= item.maxQuantity}
+                          className="w-6 h-6 flex items-center justify-center rounded-full bg-brown-dark/10 hover:bg-brown-dark/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                           <Plus size={12} />
                         </button>
                         <button onClick={() => removeFromCart(item.product)} className="ml-1 text-brown-dark/60 hover:text-brown-dark">
@@ -380,60 +304,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </ChatBubble>
 
               <div className="bg-cream-light rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
-                {contactMethod !== 'stripe' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.name')} *</label>
-                    <input ref={nameInputRef} name="name" value={details.name} onChange={handleDetailsChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.contactMethodLabel')} *</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setContactMethod('phone')}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
-                        contactMethod === 'phone' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
-                      }`}
-                    >
-                      {t('orders.contactMethodPhone')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setContactMethod('email')}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
-                        contactMethod === 'email' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
-                      }`}
-                    >
-                      {t('orders.contactMethodEmail')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setContactMethod('stripe')}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
-                        contactMethod === 'stripe' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
-                      }`}
-                    >
-                      {t('orders.contactMethodStripe')}
-                    </button>
-                  </div>
-                </div>
-
-                {contactMethod === 'phone' ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.phone')} *</label>
-                    <input ref={phoneInputRef} name="phone" value={details.phone} onChange={handleDetailsChange} required placeholder={t('orders.phonePlaceholder')} className={inputClass} />
-                  </div>
-                ) : contactMethod === 'email' ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.email')} *</label>
-                    <input ref={emailInputRef} type="email" name="email" value={details.email} onChange={handleDetailsChange} required placeholder={t('orders.emailPlaceholder')} className={inputClass} />
-                    <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.emailPriorityNote')}</p>
-                  </div>
-                ) : (
-                  <p className="text-xs text-brown-mid">{t('orders.stripeCollectNote')}</p>
-                )}
+                <p className="text-xs text-brown-mid">{t('orders.stripeCollectNote')}</p>
 
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
@@ -476,12 +347,6 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                 </div>
                 {[
                   { icon: '📅', label: t('orders.date'), value: details.date },
-                  ...(contactMethod === 'stripe' ? [] : [{ icon: '👤', label: t('orders.name'), value: details.name }]),
-                  ...(contactMethod === 'phone'
-                    ? [{ icon: '📱', label: t('orders.phone'), value: details.phone }]
-                    : contactMethod === 'email'
-                    ? [{ icon: '📧', label: t('orders.email'), value: details.email }]
-                    : []),
                   ...(details.notes ? [{ icon: '📝', label: t('orders.notes'), value: details.notes }] : []),
                 ].map(row => (
                   <div key={row.label} className="flex gap-2">
@@ -493,28 +358,19 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </div>
 
               <ChatBubble delay={200}>
-                {contactMethod === 'phone'
-                  ? (isEn ? 'I\'ll send you a WhatsApp to confirm! 💬' : '¡Te envío un WhatsApp para confirmar! 💬')
-                  : contactMethod === 'email'
-                  ? (isEn ? 'I\'ll reply to your email to confirm — replies may take a bit longer than WhatsApp! 📧' : '¡Te respondo al email para confirmar — puede tardar un poco más que por WhatsApp! 📧')
-                  : (isEn ? 'You\'ll be redirected to a secure payment page 💳' : 'Te voy a redirigir a una página de pago segura 💳')}
+                {isEn ? 'You\'ll be redirected to a secure payment page 💳' : 'Te voy a redirigir a una página de pago segura 💳'}
               </ChatBubble>
             </>
           )}
         </div>
 
         {/* Footer nav */}
-        {!sent && (
-          <div className="bg-cream-light border-t border-rose px-4 py-3 flex flex-col gap-2 flex-shrink-0">
-            {sendError && (
-              <p className="text-xs font-semibold text-burgundy">
-                {t(contactMethod === 'stripe' ? 'orders.stripeSendError' : 'orders.emailSendError')}
-              </p>
-            )}
-            {contactMethod === 'stripe' && cartTotal <= 0 && (
-              <p className="text-xs font-semibold text-burgundy">{t('orders.stripeMinTotalError')}</p>
-            )}
-            <div className="flex gap-3">
+        <div className="bg-cream-light border-t border-rose px-4 py-3 flex flex-col gap-2 flex-shrink-0">
+          {sendError && <p className="text-xs font-semibold text-burgundy">{t('orders.stripeSendError')}</p>}
+          {step === 'confirm' && cartTotal <= 0 && (
+            <p className="text-xs font-semibold text-burgundy">{t('orders.stripeMinTotalError')}</p>
+          )}
+          <div className="flex gap-3">
             {step !== 'product' && (
               <button
                 onClick={() => setStep(step === 'confirm' ? 'details' : 'product')}
@@ -534,26 +390,15 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
             ) : (
               <button
                 onClick={submitOrder}
-                disabled={sending || (contactMethod === 'stripe' && cartTotal <= 0)}
-                className={`flex-1 text-white font-bold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                  contactMethod === 'phone' ? 'bg-[#25D366] hover:bg-[#1ebe5d]' : contactMethod === 'stripe' ? 'bg-[#635BFF] hover:bg-[#4f46e5]' : 'bg-wine hover:bg-wine-dark'
-                }`}
+                disabled={sending || cartTotal <= 0}
+                className="flex-1 text-white font-bold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-[#635BFF] hover:bg-[#4f46e5]"
               >
-                {sending ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : contactMethod === 'phone' ? <Send size={16} /> : <Mail size={16} />}
-                {sending
-                  ? (isEn ? 'Sending…' : 'Enviando…')
-                  : contactMethod === 'phone'
-                  ? t('orders.submit')
-                  : contactMethod === 'email'
-                  ? t('orders.submitEmail')
-                  : t('orders.submitStripe')}
+                {sending ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                {sending ? (isEn ? 'Redirecting…' : 'Redirigiendo…') : t('orders.submitStripe')}
               </button>
             )}
-            </div>
           </div>
-        )}
+        </div>
       </div>
     </>
   )

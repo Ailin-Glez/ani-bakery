@@ -25,8 +25,8 @@ export async function exportSalesToExcel(sales: Sale[], isEn = false) {
   const XLSX = await import('xlsx')
 
   const headers = isEn
-    ? ['Date', 'Customer', 'Phone', 'Product', 'Quantity', 'Unit price', 'Total', 'Status', 'Origin', 'Paid', 'Payment method', 'Paid on', 'Notes']
-    : ['Fecha', 'Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio unitario', 'Total', 'Estado', 'Origen', 'Pagado', 'Método de pago', 'Fecha de pago', 'Notas']
+    ? ['Date', 'Customer', 'Phone', 'Product', 'Quantity', 'Unit price', 'Total', 'Status', 'Origin', 'Paid', 'Payment method', 'Paid on', 'Delivery method', 'Address', 'Notes']
+    : ['Fecha', 'Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio unitario', 'Total', 'Estado', 'Origen', 'Pagado', 'Método de pago', 'Fecha de pago', 'Método de entrega', 'Dirección', 'Notas']
 
   const rows = sales.map(s => [
     s.date,
@@ -41,6 +41,8 @@ export async function exportSalesToExcel(sales: Sale[], isEn = false) {
     s.paid ? (isEn ? 'Yes' : 'Sí') : (isEn ? 'No' : 'No'),
     s.paymentMethod ? (isEn ? PAYMENT_METHOD_LABEL[s.paymentMethod].en : PAYMENT_METHOD_LABEL[s.paymentMethod].es) : '',
     s.paidAt ? s.paidAt.slice(0, 10) : '',
+    s.deliveryMethod ? (s.deliveryMethod === 'delivery' ? (isEn ? 'Delivery' : 'Envío') : (isEn ? 'Pickup' : 'Retiro')) : '',
+    s.shippingAddress || '',
     s.notes,
   ])
 
@@ -48,7 +50,7 @@ export async function exportSalesToExcel(sales: Sale[], isEn = false) {
   sheet['!cols'] = [
     { wch: 12 }, { wch: 22 }, { wch: 16 }, { wch: 24 }, { wch: 10 },
     { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 8 },
-    { wch: 14 }, { wch: 14 }, { wch: 30 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 30 },
   ]
 
   const totalRevenue = sales.filter(s => s.status !== 'cancelled').reduce((sum, s) => sum + s.total, 0)

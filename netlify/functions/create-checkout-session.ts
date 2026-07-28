@@ -42,7 +42,8 @@ export const handler: Handler = async event => {
         },
       })),
       phone_number_collection: { enabled: true },
-      shipping_address_collection: { allowed_countries: ['US'] },
+      // Only ask for a shipping address when the customer chose delivery; pickup orders don't need one.
+      ...(metadata?.deliveryMethod === 'delivery' ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
       customer_creation: 'always',
       invoice_creation: { enabled: true },
       metadata,

@@ -17,6 +17,23 @@ export const business = {
   email: 'anisartisanbakery@gmail.com',
 }
 
+export const DELIVERY_FEE = 10
+
+export function getDeliveryFee(deliveryMethod: 'pickup' | 'delivery') {
+  return deliveryMethod === 'delivery' ? DELIVERY_FEE : 0
+}
+
+// Stripe's standard US card rate. Grossing up by this formula means Stripe's fee
+// on the *surcharged* total still nets us exactly `subtotal` after they take their cut.
+const STRIPE_FEE_PERCENT = 0.029
+const STRIPE_FEE_FIXED = 0.3
+
+export function getCardProcessingFee(subtotal: number) {
+  if (subtotal <= 0) return 0
+  const grossedUp = (subtotal + STRIPE_FEE_FIXED) / (1 - STRIPE_FEE_PERCENT)
+  return Math.round((grossedUp - subtotal) * 100) / 100
+}
+
 export function buildWhatsAppOrderLink(message: string) {
   return `${business.phone.whatsappLink}?text=${encodeURIComponent(message)}`
 }

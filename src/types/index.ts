@@ -34,6 +34,7 @@ export type SaleSource = 'web' | 'manual'
 export type PaymentMethod = 'zelle' | 'cash' | 'other' | 'stripe'
 export type ContactMethod = 'phone' | 'email' | 'stripe'
 export type SaleLanguage = 'es' | 'en'
+export type DeliveryMethod = 'pickup' | 'delivery'
 
 export interface Sale {
   id: string
@@ -49,6 +50,7 @@ export interface Sale {
   date: string
   notes: string
   shippingAddress?: string
+  deliveryMethod?: DeliveryMethod
   stripePaymentIntentId?: string
   status: SaleStatus
   source: SaleSource

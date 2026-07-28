@@ -9,6 +9,8 @@ import {
   isValidEmail,
   formatUSPhoneInput,
   getBlockedRange,
+  getDeliveryFee,
+  DELIVERY_FEE,
   ORDER_MIN_LEAD_DAYS,
 } from './business'
 
@@ -206,5 +208,15 @@ describe('openWhatsAppLink', () => {
     const navigate = vi.fn()
     openWhatsAppLink(link, opener, navigate)
     expect(navigate).toHaveBeenCalledWith(link)
+  })
+})
+
+describe('getDeliveryFee', () => {
+  it('charges the delivery fee for delivery orders', () => {
+    expect(getDeliveryFee('delivery')).toBe(DELIVERY_FEE)
+  })
+
+  it('charges nothing for pickup orders', () => {
+    expect(getDeliveryFee('pickup')).toBe(0)
   })
 })

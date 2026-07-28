@@ -37,6 +37,7 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
     date: metadata.date || '',
     notes: metadata.notes || '',
     shippingAddress,
+    deliveryMethod: metadata.deliveryMethod === 'delivery' ? 'delivery' : 'pickup',
     status: 'in_progress',
     source: 'web',
     createdAt: now,

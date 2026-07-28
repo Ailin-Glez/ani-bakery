@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, createCheckoutSession, isOrderDateValid, getBlockedRange } from '../config/business'
+import { business, createCheckoutSession, isOrderDateValid, getBlockedRange, getDeliveryFee, getCardProcessingFee, DELIVERY_FEE } from '../config/business'
+import type { DeliveryMethod } from '../types'
 
 interface CartItem {
   product: string
@@ -57,6 +58,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const [customName, setCustomName] = useState('')
   const [addingCustom, setAddingCustom] = useState(false)
   const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod | ''>('')
+  const [deliveryMethodError, setDeliveryMethodError] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(false)
   const dateInputRef = useRef<HTMLInputElement>(null)
@@ -78,7 +81,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
     }
   }, [open, initialProduct, products])
 
-  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
   const addToCart = (p: { name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
@@ -134,6 +137,10 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   }
 
   const goToConfirm = () => {
+    if (!deliveryMethod) {
+      setDeliveryMethodError(true)
+      return
+    }
     const dateMessage = getDateValidityMessage(details.date)
     if (dateMessage) {
       dateInputRef.current?.setCustomValidity(dateMessage)
@@ -144,6 +151,10 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+  const deliveryFee = getDeliveryFee(deliveryMethod || 'pickup')
+  const orderTotal = cartTotal + deliveryFee
+  const processingFee = getCardProcessingFee(orderTotal)
+  const grandTotal = orderTotal + processingFee
 
   const today = new Date().toISOString().slice(0, 10)
   const upcomingOutOfOffice = outOfOfficeRanges.filter(r => r.endDate >= today).slice(0, 2)
@@ -151,11 +162,14 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const submitOrder = async () => {
     setSending(true)
     setSendError(false)
+    const items = cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice }))
+    if (deliveryFee > 0) items.push({ product: isEn ? 'Delivery' : 'Envío', quantity: 1, unitPrice: deliveryFee })
+    if (processingFee > 0) items.push({ product: isEn ? 'Card processing fee' : 'Cargo por procesamiento de pago', quantity: 1, unitPrice: processingFee })
     const url = await createCheckoutSession({
-      items: cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice })),
+      items,
       successUrl: `${window.location.origin}/?checkout=success`,
       cancelUrl: `${window.location.origin}/?checkout=cancel`,
-      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es' },
+      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es', deliveryMethod: deliveryMethod || 'pickup' },
     })
     if (!url) {
       setSending(false)
@@ -304,7 +318,32 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </ChatBubble>
 
               <div className="bg-cream-light rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
-                <p className="text-xs text-brown-mid">{t('orders.stripeCollectNote')}</p>
+                <div>
+                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.deliveryMethodLabel')} *</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setDeliveryMethod('pickup'); setDeliveryMethodError(false) }}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        deliveryMethod === 'pickup' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.deliveryMethodPickup')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDeliveryMethod('delivery'); setDeliveryMethodError(false) }}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        deliveryMethod === 'delivery' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.deliveryMethodDelivery')} (+${DELIVERY_FEE})
+                    </button>
+                  </div>
+                  {deliveryMethodError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.deliveryMethodError')}</p>}
+                </div>
+
+                <p className="text-xs text-brown-mid">{deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}</p>
 
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
@@ -338,15 +377,28 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                       {item.unitPrice > 0 && <span className="text-brown-mid flex-shrink-0">${(item.unitPrice * item.quantity).toFixed(2)}</span>}
                     </div>
                   ))}
-                  {cartTotal > 0 && (
+                  {deliveryFee > 0 && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-brown-dark">{t('orders.deliveryMethodDelivery')}</span>
+                      <span className="text-brown-mid flex-shrink-0">${deliveryFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {processingFee > 0 && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-brown-dark">{t('orders.cardProcessingFee')}</span>
+                      <span className="text-brown-mid flex-shrink-0">${processingFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {grandTotal > 0 && (
                     <div className="flex justify-between gap-2 font-bold text-brown-dark pt-1">
                       <span>{t('admin.total')}</span>
-                      <span>${cartTotal.toFixed(2)}</span>
+                      <span>${grandTotal.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
                 {[
                   { icon: '📅', label: t('orders.date'), value: details.date },
+                  { icon: deliveryMethod === 'delivery' ? '🚚' : '🏠', label: t('orders.deliveryMethodLabel'), value: t(deliveryMethod === 'delivery' ? 'orders.deliveryMethodDelivery' : 'orders.deliveryMethodPickup') },
                   ...(details.notes ? [{ icon: '📝', label: t('orders.notes'), value: details.notes }] : []),
                 ].map(row => (
                   <div key={row.label} className="flex gap-2">
@@ -367,7 +419,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         {/* Footer nav */}
         <div className="bg-cream-light border-t border-rose px-4 py-3 flex flex-col gap-2 flex-shrink-0">
           {sendError && <p className="text-xs font-semibold text-burgundy">{t('orders.stripeSendError')}</p>}
-          {step === 'confirm' && cartTotal <= 0 && (
+          {step === 'confirm' && orderTotal <= 0 && (
             <p className="text-xs font-semibold text-burgundy">{t('orders.stripeMinTotalError')}</p>
           )}
           <div className="flex gap-3">
@@ -390,7 +442,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
             ) : (
               <button
                 onClick={submitOrder}
-                disabled={sending || cartTotal <= 0}
+                disabled={sending || orderTotal <= 0}
                 className="flex-1 text-white font-bold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-[#635BFF] hover:bg-[#4f46e5]"
               >
                 {sending ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}

@@ -1067,6 +1067,11 @@ export default function Admin() {
                                       {sale.contactMethod === 'email' ? t('orders.email') : sale.contactMethod === 'stripe' ? t('orders.contactMethodStripe') : t('orders.phone')}
                                     </span>
                                   )}
+                                  {sale.deliveryMethod && (
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
+                                      {sale.deliveryMethod === 'delivery' ? `🚚 ${t('orders.deliveryMethodDelivery')}` : `🏠 ${t('orders.deliveryMethodPickup')}`}
+                                    </span>
+                                  )}
                                   {renderPaidBadge(sale)}
                                 </div>
                                 {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
@@ -1095,6 +1100,11 @@ export default function Admin() {
                               <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
                                 {first.contactMethod === 'email' ? <Mail size={11} /> : first.contactMethod === 'stripe' ? <CreditCard size={11} /> : <Phone size={11} />}
                                 {first.contactMethod === 'email' ? t('orders.email') : first.contactMethod === 'stripe' ? t('orders.contactMethodStripe') : t('orders.phone')}
+                              </span>
+                            )}
+                            {first.deliveryMethod && (
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
+                                {first.deliveryMethod === 'delivery' ? `🚚 ${t('orders.deliveryMethodDelivery')}` : `🏠 ${t('orders.deliveryMethodPickup')}`}
                               </span>
                             )}
                             {first.notes && <p className="text-black text-xs italic w-full">"{first.notes}"</p>}

@@ -18,7 +18,10 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   const fullSession = await stripe.checkout.sessions.retrieve(session.id, { expand: ['line_items', 'line_items.data.price'] })
   const lineItems = fullSession.line_items?.data || []
   const customerDetails = fullSession.customer_details
-  const shippingAddress = formatAddress(fullSession.shipping_details?.address)
+  // As of newer Stripe API versions, shipping info moved from the (now-removed)
+  // top-level `shipping_details` field to `collected_information.shipping_details`.
+  const shippingDetails = fullSession.collected_information?.shipping_details
+  const shippingAddress = formatAddress(shippingDetails?.address)
   const metadata = fullSession.metadata || {}
   const now = new Date().toISOString()
   const paymentIntentId = typeof fullSession.payment_intent === 'string' ? fullSession.payment_intent : fullSession.payment_intent?.id
@@ -26,7 +29,7 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   await Promise.all(lineItems.map(item => db.collection('sales').add({
     orderId: session.id,
     stripePaymentIntentId: paymentIntentId || '',
-    customerName: customerDetails?.name || fullSession.shipping_details?.name || '',
+    customerName: customerDetails?.name || shippingDetails?.name || '',
     phone: customerDetails?.phone || '',
     email: customerDetails?.email || '',
     contactMethod: 'stripe',

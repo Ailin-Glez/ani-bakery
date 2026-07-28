@@ -1,6 +1,33 @@
 import type { Handler } from '@netlify/functions'
 import Stripe from 'stripe'
+import { Resend } from 'resend'
 import { getAdminDb } from './lib/firebaseAdmin'
+import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
+
+const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
+
+async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | undefined, isEn: boolean) {
+  if (!email || !invoice.hosted_invoice_url || !process.env.RESEND_API_KEY) return
+
+  const heading = isEn ? 'Here\'s your receipt' : 'Aquí está tu factura'
+  const bodyText = isEn
+    ? `Thank you for your order! You can view or download your invoice using the button below.`
+    : `¡Gracias por tu pedido! Podés ver o descargar tu factura con el botón de abajo.`
+  const html = renderBrandedEmail({
+    heading,
+    bodyHtml: textToHtmlParagraphs(bodyText),
+    ctaLabel: isEn ? 'View invoice' : 'Ver factura',
+    ctaUrl: invoice.hosted_invoice_url,
+  })
+
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    subject: isEn ? 'Your receipt - Ani\'s Artisan Bakery' : 'Tu factura - Ani\'s Artisan Bakery',
+    html,
+  })
+}
 
 function formatAddress(address: Stripe.Address | null | undefined) {
   if (!address) return ''
@@ -53,7 +80,8 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   const invoiceId = typeof fullSession.invoice === 'string' ? fullSession.invoice : fullSession.invoice?.id
   if (invoiceId) {
     try {
-      await stripe.invoices.sendInvoice(invoiceId)
+      const invoice = await stripe.invoices.retrieve(invoiceId)
+      await emailInvoiceLink(invoice, customerDetails?.email, metadata.language === 'en')
     } catch (err) {
       console.error('stripe-webhook: failed to email invoice:', err)
     }

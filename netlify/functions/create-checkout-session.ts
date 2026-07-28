@@ -7,6 +7,8 @@ interface CartItem {
   unitPrice: number
 }
 
+const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
+
 export const handler: Handler = async event => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' }

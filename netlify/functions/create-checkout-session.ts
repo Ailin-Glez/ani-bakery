@@ -18,10 +18,11 @@ export const handler: Handler = async event => {
   }
 
   try {
-    const { items, successUrl, cancelUrl } = JSON.parse(event.body || '{}') as {
+    const { items, successUrl, cancelUrl, metadata } = JSON.parse(event.body || '{}') as {
       items?: CartItem[]
       successUrl?: string
       cancelUrl?: string
+      metadata?: Record<string, string>
     }
 
     if (!items?.length || !successUrl || !cancelUrl) {
@@ -40,6 +41,9 @@ export const handler: Handler = async event => {
           product_data: { name: item.product },
         },
       })),
+      phone_number_collection: { enabled: true },
+      shipping_address_collection: { allowed_countries: ['US'] },
+      metadata,
       success_url: successUrl,
       cancel_url: cancelUrl,
     })

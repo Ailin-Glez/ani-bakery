@@ -4,7 +4,7 @@ import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2, M
 import { useProducts } from '../context/ProductContext'
 import { useSales } from '../context/SalesContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, openWhatsAppLink, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
+import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, createCheckoutSession, openWhatsAppLink, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
 import type { ContactMethod } from '../types'
 
 interface CartItem {
@@ -144,7 +144,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   }
 
   const goToConfirm = () => {
-    if (!details.name.trim()) {
+    if (contactMethod !== 'stripe' && !details.name.trim()) {
       nameInputRef.current?.setCustomValidity(t('orders.nameError'))
       nameInputRef.current?.reportValidity()
       return
@@ -197,6 +197,24 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   }
 
   const submitOrder = async () => {
+    if (contactMethod === 'stripe') {
+      setSending(true)
+      setSendError(false)
+      const url = await createCheckoutSession({
+        items: cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice })),
+        successUrl: `${window.location.origin}/?checkout=success`,
+        cancelUrl: `${window.location.origin}/?checkout=cancel`,
+        metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es' },
+      })
+      if (!url) {
+        setSending(false)
+        setSendError(true)
+        return
+      }
+      window.location.href = url
+      return
+    }
+
     const items = cart.map(item => ({
       product: isEn && item.productEn ? item.productEn : item.product,
       quantity: item.quantity,
@@ -362,10 +380,12 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </ChatBubble>
 
               <div className="bg-cream-light rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
-                <div>
-                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.name')} *</label>
-                  <input ref={nameInputRef} name="name" value={details.name} onChange={handleDetailsChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
-                </div>
+                {contactMethod !== 'stripe' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.name')} *</label>
+                    <input ref={nameInputRef} name="name" value={details.name} onChange={handleDetailsChange} required placeholder={t('orders.namePlaceholder')} className={inputClass} />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.contactMethodLabel')} *</label>
@@ -388,6 +408,15 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     >
                       {t('orders.contactMethodEmail')}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setContactMethod('stripe')}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        contactMethod === 'stripe' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.contactMethodStripe')}
+                    </button>
                   </div>
                 </div>
 
@@ -396,12 +425,14 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.phone')} *</label>
                     <input ref={phoneInputRef} name="phone" value={details.phone} onChange={handleDetailsChange} required placeholder={t('orders.phonePlaceholder')} className={inputClass} />
                   </div>
-                ) : (
+                ) : contactMethod === 'email' ? (
                   <div>
                     <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.email')} *</label>
                     <input ref={emailInputRef} type="email" name="email" value={details.email} onChange={handleDetailsChange} required placeholder={t('orders.emailPlaceholder')} className={inputClass} />
                     <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.emailPriorityNote')}</p>
                   </div>
+                ) : (
+                  <p className="text-xs text-brown-mid">{t('orders.stripeCollectNote')}</p>
                 )}
 
                 <div>
@@ -445,10 +476,12 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                 </div>
                 {[
                   { icon: '📅', label: t('orders.date'), value: details.date },
-                  { icon: '👤', label: t('orders.name'), value: details.name },
-                  contactMethod === 'phone'
-                    ? { icon: '📱', label: t('orders.phone'), value: details.phone }
-                    : { icon: '📧', label: t('orders.email'), value: details.email },
+                  ...(contactMethod === 'stripe' ? [] : [{ icon: '👤', label: t('orders.name'), value: details.name }]),
+                  ...(contactMethod === 'phone'
+                    ? [{ icon: '📱', label: t('orders.phone'), value: details.phone }]
+                    : contactMethod === 'email'
+                    ? [{ icon: '📧', label: t('orders.email'), value: details.email }]
+                    : []),
                   ...(details.notes ? [{ icon: '📝', label: t('orders.notes'), value: details.notes }] : []),
                 ].map(row => (
                   <div key={row.label} className="flex gap-2">
@@ -462,7 +495,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               <ChatBubble delay={200}>
                 {contactMethod === 'phone'
                   ? (isEn ? 'I\'ll send you a WhatsApp to confirm! 💬' : '¡Te envío un WhatsApp para confirmar! 💬')
-                  : (isEn ? 'I\'ll reply to your email to confirm — replies may take a bit longer than WhatsApp! 📧' : '¡Te respondo al email para confirmar — puede tardar un poco más que por WhatsApp! 📧')}
+                  : contactMethod === 'email'
+                  ? (isEn ? 'I\'ll reply to your email to confirm — replies may take a bit longer than WhatsApp! 📧' : '¡Te respondo al email para confirmar — puede tardar un poco más que por WhatsApp! 📧')
+                  : (isEn ? 'You\'ll be redirected to a secure payment page 💳' : 'Te voy a redirigir a una página de pago segura 💳')}
               </ChatBubble>
             </>
           )}
@@ -471,7 +506,14 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         {/* Footer nav */}
         {!sent && (
           <div className="bg-cream-light border-t border-rose px-4 py-3 flex flex-col gap-2 flex-shrink-0">
-            {sendError && <p className="text-xs font-semibold text-burgundy">{t('orders.emailSendError')}</p>}
+            {sendError && (
+              <p className="text-xs font-semibold text-burgundy">
+                {t(contactMethod === 'stripe' ? 'orders.stripeSendError' : 'orders.emailSendError')}
+              </p>
+            )}
+            {contactMethod === 'stripe' && cartTotal <= 0 && (
+              <p className="text-xs font-semibold text-burgundy">{t('orders.stripeMinTotalError')}</p>
+            )}
             <div className="flex gap-3">
             {step !== 'product' && (
               <button
@@ -492,15 +534,21 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
             ) : (
               <button
                 onClick={submitOrder}
-                disabled={sending}
+                disabled={sending || (contactMethod === 'stripe' && cartTotal <= 0)}
                 className={`flex-1 text-white font-bold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                  contactMethod === 'phone' ? 'bg-[#25D366] hover:bg-[#1ebe5d]' : 'bg-wine hover:bg-wine-dark'
+                  contactMethod === 'phone' ? 'bg-[#25D366] hover:bg-[#1ebe5d]' : contactMethod === 'stripe' ? 'bg-[#635BFF] hover:bg-[#4f46e5]' : 'bg-wine hover:bg-wine-dark'
                 }`}
               >
                 {sending ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : contactMethod === 'phone' ? <Send size={16} /> : <Mail size={16} />}
-                {sending ? (isEn ? 'Sending…' : 'Enviando…') : contactMethod === 'phone' ? t('orders.submit') : t('orders.submitEmail')}
+                {sending
+                  ? (isEn ? 'Sending…' : 'Enviando…')
+                  : contactMethod === 'phone'
+                  ? t('orders.submit')
+                  : contactMethod === 'email'
+                  ? t('orders.submitEmail')
+                  : t('orders.submitStripe')}
               </button>
             )}
             </div>

@@ -68,6 +68,22 @@ export async function sendOrderEmail(params: { subject: string; message: string;
   return data.success === true
 }
 
+export async function createCheckoutSession(params: {
+  items: { product: string; quantity: number; unitPrice: number }[]
+  successUrl: string
+  cancelUrl: string
+  metadata?: Record<string, string>
+}) {
+  const response = await fetch('/.netlify/functions/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) return null
+  const data = await response.json()
+  return data.url as string | undefined
+}
+
 export const ORDER_MIN_LEAD_DAYS = 2
 
 function toDateInputValue(date: Date) {

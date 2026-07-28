@@ -18,6 +18,7 @@ const PAYMENT_METHOD_LABEL: Record<NonNullable<Sale['paymentMethod']>, { es: str
   zelle: { es: 'Zelle', en: 'Zelle' },
   cash: { es: 'Efectivo', en: 'Cash' },
   other: { es: 'Otro', en: 'Other' },
+  stripe: { es: 'Tarjeta (Stripe)', en: 'Card (Stripe)' },
 }
 
 export async function exportSalesToExcel(sales: Sale[], isEn = false) {

@@ -30,8 +30,8 @@ export interface OrderFormData {
 
 export type SaleStatus = 'pending_confirmation' | 'pending_payment' | 'in_progress' | 'delivered' | 'cancelled'
 export type SaleSource = 'web' | 'manual'
-export type PaymentMethod = 'zelle' | 'cash' | 'other'
-export type ContactMethod = 'phone' | 'email'
+export type PaymentMethod = 'zelle' | 'cash' | 'other' | 'stripe'
+export type ContactMethod = 'phone' | 'email' | 'stripe'
 export type SaleLanguage = 'es' | 'en'
 
 export interface Sale {
@@ -47,6 +47,7 @@ export interface Sale {
   total: number
   date: string
   notes: string
+  shippingAddress?: string
   status: SaleStatus
   source: SaleSource
   createdAt: string

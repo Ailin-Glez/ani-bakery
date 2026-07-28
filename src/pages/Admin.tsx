@@ -10,7 +10,7 @@ import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail, openWhatsAppLink } from '../config/business'
 import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, CreditCard, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const EMPTY_PRODUCT: Omit<Product, 'id'> = {
   name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', categoryEn: '', available: true,
@@ -1049,13 +1049,14 @@ export default function Admin() {
                                   </span>
                                   {sale.source === 'web' && (
                                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
-                                      {sale.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
-                                      {sale.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
+                                      {sale.contactMethod === 'email' ? <Mail size={11} /> : sale.contactMethod === 'stripe' ? <CreditCard size={11} /> : <Phone size={11} />}
+                                      {sale.contactMethod === 'email' ? t('orders.email') : sale.contactMethod === 'stripe' ? t('orders.contactMethodStripe') : t('orders.phone')}
                                     </span>
                                   )}
                                   {renderPaidBadge(sale)}
                                 </div>
                                 {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
+                                {sale.shippingAddress && <p className="text-black text-xs mt-1">📍 {sale.shippingAddress}</p>}
                               </div>
                               {renderSaleActions(sale)}
                             </div>
@@ -1078,11 +1079,12 @@ export default function Admin() {
                             </span>
                             {first.source === 'web' && (
                               <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid flex items-center gap-1">
-                                {first.contactMethod === 'email' ? <Mail size={11} /> : <Phone size={11} />}
-                                {first.contactMethod === 'email' ? t('orders.email') : t('orders.phone')}
+                                {first.contactMethod === 'email' ? <Mail size={11} /> : first.contactMethod === 'stripe' ? <CreditCard size={11} /> : <Phone size={11} />}
+                                {first.contactMethod === 'email' ? t('orders.email') : first.contactMethod === 'stripe' ? t('orders.contactMethodStripe') : t('orders.phone')}
                               </span>
                             )}
                             {first.notes && <p className="text-black text-xs italic w-full">"{first.notes}"</p>}
+                            {first.shippingAddress && <p className="text-black text-xs w-full">📍 {first.shippingAddress}</p>}
                           </div>
 
                           <div className="flex flex-col gap-3">

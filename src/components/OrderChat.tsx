@@ -162,9 +162,10 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const submitOrder = async () => {
     setSending(true)
     setSendError(false)
-    const items = cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice }))
-    if (deliveryFee > 0) items.push({ product: isEn ? 'Delivery' : 'Envío', quantity: 1, unitPrice: deliveryFee })
-    if (processingFee > 0) items.push({ product: isEn ? 'Card processing fee' : 'Cargo por procesamiento de pago', quantity: 1, unitPrice: processingFee })
+    const items: { product: string; quantity: number; unitPrice: number; kind?: 'shipping' | 'fee' }[] =
+      cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice }))
+    if (deliveryFee > 0) items.push({ product: isEn ? 'Delivery' : 'Envío', quantity: 1, unitPrice: deliveryFee, kind: 'shipping' })
+    if (processingFee > 0) items.push({ product: isEn ? 'Card processing fee' : 'Cargo por procesamiento de pago', quantity: 1, unitPrice: processingFee, kind: 'fee' })
     const url = await createCheckoutSession({
       items,
       successUrl: `${window.location.origin}/?checkout=success`,

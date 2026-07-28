@@ -49,6 +49,8 @@ export interface Sale {
   total: number
   date: string
   notes: string
+  deliveryFee?: number
+  processingFee?: number
   shippingAddress?: string
   deliveryMethod?: DeliveryMethod
   stripePaymentIntentId?: string

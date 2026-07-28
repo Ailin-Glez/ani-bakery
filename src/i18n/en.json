@@ -183,6 +183,8 @@
     "downloadExcel": "Excel",
     "perPage": "Per page",
     "products": "products",
+    "deliveryFeeLabel": "Delivery fee",
+    "processingFeeLabel": "Card processing fee",
     "pageOf": "Page {{current}} of {{total}}",
     "fieldCustomerName": "Customer name",
     "fieldPhone": "Phone",

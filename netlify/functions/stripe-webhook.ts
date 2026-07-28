@@ -42,8 +42,16 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   const existing = await db.collection('sales').where('orderId', '==', session.id).limit(1).get()
   if (!existing.empty) return
 
-  const fullSession = await stripe.checkout.sessions.retrieve(session.id, { expand: ['line_items', 'line_items.data.price'] })
-  const lineItems = fullSession.line_items?.data || []
+  const fullSession = await stripe.checkout.sessions.retrieve(session.id, { expand: ['line_items', 'line_items.data.price.product'] })
+  const allLineItems = fullSession.line_items?.data || []
+  const lineItemKind = (item: Stripe.LineItem) => {
+    const product = item.price?.product
+    const metadata = product && typeof product === 'object' && !('deleted' in product) ? product.metadata : undefined
+    return metadata?.kind || 'product'
+  }
+  const lineItems = allLineItems.filter(item => lineItemKind(item) === 'product')
+  const deliveryFee = allLineItems.filter(item => lineItemKind(item) === 'shipping').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
+  const processingFee = allLineItems.filter(item => lineItemKind(item) === 'fee').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
   const customerDetails = fullSession.customer_details
   // As of newer Stripe API versions, shipping info moved from the (now-removed)
   // top-level `shipping_details` field to `collected_information.shipping_details`.
@@ -66,6 +74,8 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
     total: (item.amount_total ?? 0) / 100,
     date: metadata.date || '',
     notes: metadata.notes || '',
+    deliveryFee,
+    processingFee,
     shippingAddress,
     deliveryMethod: metadata.deliveryMethod === 'delivery' ? 'delivery' : 'pickup',
     status: 'in_progress',

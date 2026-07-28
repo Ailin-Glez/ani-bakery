@@ -183,6 +183,8 @@
     "downloadExcel": "Excel",
     "perPage": "Por página",
     "products": "productos",
+    "deliveryFeeLabel": "Costo de envío",
+    "processingFeeLabel": "Cargo por procesamiento de pago",
     "pageOf": "Página {{current}} de {{total}}",
     "fieldCustomerName": "Nombre del cliente",
     "fieldPhone": "Teléfono",

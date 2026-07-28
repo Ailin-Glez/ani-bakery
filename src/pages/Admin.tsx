@@ -1044,9 +1044,10 @@ export default function Admin() {
                   const key = sale.orderId || sale.id
                   const isExpanded = expandedOrders.has(key)
                   if (group.length === 1) {
+                    const orderTotal = sale.total + (sale.deliveryFee || 0) + (sale.processingFee || 0)
                     return (
                       <div key={sale.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
-                        {renderOrderSummary(key, { customerName: sale.customerName, date: sale.date, total: sale.total, status: sale.status })}
+                        {renderOrderSummary(key, { customerName: sale.customerName, date: sale.date, total: orderTotal, status: sale.status })}
                         {isExpanded && (
                           <>
                             {renderStepper(sale)}
@@ -1076,6 +1077,8 @@ export default function Admin() {
                                 </div>
                                 {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
                                 {sale.shippingAddress && <p className="text-black text-xs mt-1">📍 {sale.shippingAddress}</p>}
+                                {!!sale.deliveryFee && <p className="text-black text-xs mt-1">🚚 {t('admin.deliveryFeeLabel')}: ${sale.deliveryFee.toFixed(2)}</p>}
+                                {!!sale.processingFee && <p className="text-black text-xs mt-1">💳 {t('admin.processingFeeLabel')}: ${sale.processingFee.toFixed(2)}</p>}
                               </div>
                               {renderSaleActions(sale)}
                             </div>
@@ -1084,7 +1087,7 @@ export default function Admin() {
                       </div>
                     )
                   }
-                  const groupTotal = group.reduce((sum, s) => sum + s.total, 0)
+                  const groupTotal = group.reduce((sum, s) => sum + s.total, 0) + (first.deliveryFee || 0) + (first.processingFee || 0)
                   return (
                     <div key={first.orderId} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
                       {renderOrderSummary(key, { customerName: first.customerName, date: first.date, total: groupTotal, status: first.status, itemCount: group.length })}
@@ -1109,6 +1112,8 @@ export default function Admin() {
                             )}
                             {first.notes && <p className="text-black text-xs italic w-full">"{first.notes}"</p>}
                             {first.shippingAddress && <p className="text-black text-xs w-full">📍 {first.shippingAddress}</p>}
+                            {!!first.deliveryFee && <p className="text-black text-xs w-full">🚚 {t('admin.deliveryFeeLabel')}: ${first.deliveryFee.toFixed(2)}</p>}
+                            {!!first.processingFee && <p className="text-black text-xs w-full">💳 {t('admin.processingFeeLabel')}: ${first.processingFee.toFixed(2)}</p>}
                           </div>
 
                           <div className="flex flex-col gap-3">

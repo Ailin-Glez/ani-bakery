@@ -26,6 +26,20 @@ export function buildWhatsAppLinkTo(phone: string, message: string) {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
 }
 
+// Opens a wa.me link in a new tab. Some browsers (mobile in-app browsers, Safari,
+// or a popup blocker triggered because the call happened after an `await` and lost
+// the "user gesture" context) silently block window.open — it returns null/a
+// pre-closed window with no error. When that happens we fall back to navigating
+// the current tab so the message still reaches WhatsApp instead of silently vanishing.
+export function openWhatsAppLink(
+  link: string,
+  opener: (url: string) => Window | null = url => window.open(url, '_blank'),
+  navigate: (url: string) => void = url => { window.location.href = url },
+) {
+  const win = opener(link)
+  if (!win || win.closed) navigate(link)
+}
+
 export function isValidUSPhone(phone: string) {
   const digits = phone.replace(/\D/g, '').replace(/^1/, '')
   return /^[2-9]\d{9}$/.test(digits)

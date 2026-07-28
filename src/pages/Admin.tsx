@@ -8,7 +8,7 @@ import { useOutOfOffice } from '../context/OutOfOfficeContext'
 import { exportSalesToExcel } from '../lib/exportSales'
 import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail } from '../config/business'
+import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail, openWhatsAppLink } from '../config/business'
 import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
 import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -312,13 +312,16 @@ export default function Admin() {
       const subject = i18n.getFixedT(lang)('admin.paymentConfirmationSubject')
       await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name })
     } else {
-      window.open(buildWhatsAppLinkTo(sale.phone, message), '_blank')
+      openWhatsAppLink(buildWhatsAppLinkTo(sale.phone, message))
     }
   }
 
-  const handleMarkPaid = async (sale: Sale, method: PaymentMethod) => {
-    await markOrderPaid(sale, method)
+  const handleMarkPaid = (sale: Sale, method: PaymentMethod) => {
+    // Fire the WhatsApp/email confirmation immediately, in the same tick as the
+    // user's click — awaiting markOrderPaid first breaks the browser's "user
+    // gesture" chain and window.open gets silently blocked.
     sendPaymentConfirmation(sale)
+    markOrderPaid(sale, method)
   }
 
   const sendThankYouMessage = async (sale: Sale) => {
@@ -329,7 +332,7 @@ export default function Admin() {
       const subject = i18n.getFixedT(lang)('admin.thankYouSubject')
       await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name })
     } else {
-      window.open(buildWhatsAppLinkTo(sale.phone, message), '_blank')
+      openWhatsAppLink(buildWhatsAppLinkTo(sale.phone, message))
     }
   }
 

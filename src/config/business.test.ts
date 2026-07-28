@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   getMinOrderDate,
   isOrderDateValid,
   buildOrderMessage,
   buildWhatsAppOrderLink,
+  openWhatsAppLink,
   isValidUSPhone,
   isValidEmail,
   formatUSPhoneInput,
@@ -179,5 +180,31 @@ describe('buildWhatsAppOrderLink', () => {
     const link = buildWhatsAppOrderLink('Hola & gracias')
     expect(link).toMatch(/^https:\/\/wa\.me\/\d+\?text=/)
     expect(link).toContain(encodeURIComponent('Hola & gracias'))
+  })
+})
+
+describe('openWhatsAppLink', () => {
+  const link = 'https://wa.me/18035550123?text=hola'
+
+  it('does not navigate away when the popup opens successfully', () => {
+    const opener = vi.fn().mockReturnValue({ closed: false } as Window)
+    const navigate = vi.fn()
+    openWhatsAppLink(link, opener, navigate)
+    expect(opener).toHaveBeenCalledWith(link)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('falls back to same-tab navigation when the popup is silently blocked (returns null)', () => {
+    const opener = vi.fn().mockReturnValue(null)
+    const navigate = vi.fn()
+    openWhatsAppLink(link, opener, navigate)
+    expect(navigate).toHaveBeenCalledWith(link)
+  })
+
+  it('falls back to same-tab navigation when the popup is opened but immediately closed', () => {
+    const opener = vi.fn().mockReturnValue({ closed: true } as Window)
+    const navigate = vi.fn()
+    openWhatsAppLink(link, opener, navigate)
+    expect(navigate).toHaveBeenCalledWith(link)
   })
 })

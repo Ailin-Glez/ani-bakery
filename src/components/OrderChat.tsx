@@ -4,7 +4,7 @@ import { X, ShoppingBag, ChevronRight, ChevronLeft, Send, Plus, Minus, Trash2, M
 import { useProducts } from '../context/ProductContext'
 import { useSales } from '../context/SalesContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
+import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, openWhatsAppLink, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
 import type { ContactMethod } from '../types'
 
 interface CartItem {
@@ -205,7 +205,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
     if (contactMethod === 'phone') {
       const message = buildOrderMessage({ name: details.name, contact, items, date: details.date, notes: details.notes }, isEn)
-      window.open(buildWhatsAppOrderLink(message), '_blank')
+      openWhatsAppLink(buildWhatsAppOrderLink(message))
       recordSale()
       setSent(true)
       return

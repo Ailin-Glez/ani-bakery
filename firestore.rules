@@ -23,13 +23,15 @@ service cloud.firestore {
     }
 
     // Sales: customers can create their own order (always starting unpaid,
-    // pending confirmation), but only the admin can read the sales list or
-    // change status/payment/delete an existing sale.
+    // pending confirmation via the public form); the admin can create sales
+    // in any state (manual "Agregar venta") and is the only one who can read
+    // the sales list or change status/payment/delete an existing sale.
     match /sales/{saleId} {
       allow read: if isAdmin();
-      allow create: if request.resource.data.status == 'pending_confirmation'
-                    && request.resource.data.paid == false
-                    && request.resource.data.source == 'web';
+      allow create: if isAdmin()
+                    || (request.resource.data.status == 'pending_confirmation'
+                        && request.resource.data.paid == false
+                        && request.resource.data.source == 'web');
       allow update, delete: if isAdmin();
     }
 

@@ -119,7 +119,9 @@ export const handler: Handler = async event => {
       })
     }
 
-    const processingFee = getCardProcessingFee(subtotal)
+    // Card network rules prohibit surcharging debit/prepaid cards, so this only
+    // applies when the customer told us they're paying with credit.
+    const processingFee = metadata?.applyProcessingFee === 'true' ? getCardProcessingFee(subtotal) : 0
     if (processingFee > 0) {
       lineItems.push({
         quantity: 1,

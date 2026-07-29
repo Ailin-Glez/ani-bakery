@@ -61,6 +61,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod | ''>('')
   const [deliveryMethodError, setDeliveryMethodError] = useState(false)
+  const [cardType, setCardType] = useState<'credit' | 'debit' | ''>('')
+  const [cardTypeError, setCardTypeError] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(false)
   const dateInputRef = useRef<HTMLInputElement>(null)
@@ -83,7 +85,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
     }
   }, [open, initialProduct, products])
 
-  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCardType(''); setCardTypeError(false); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
   const addToCart = (p: { id: string; name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
@@ -143,6 +145,10 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       setDeliveryMethodError(true)
       return
     }
+    if (!cardType) {
+      setCardTypeError(true)
+      return
+    }
     const dateMessage = getDateValidityMessage(details.date)
     if (dateMessage) {
       dateInputRef.current?.setCustomValidity(dateMessage)
@@ -155,7 +161,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const deliveryFee = getDeliveryFee(deliveryMethod || 'pickup')
   const orderTotal = cartTotal + deliveryFee
-  const processingFee = getCardProcessingFee(orderTotal)
+  // Card networks prohibit surcharging debit/prepaid cards, so the processing fee only applies to credit.
+  const processingFee = cardType === 'credit' ? getCardProcessingFee(orderTotal) : 0
   const grandTotal = orderTotal + processingFee
 
   const today = new Date().toISOString().slice(0, 10)
@@ -175,7 +182,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       items,
       successUrl: `${window.location.origin}/?checkout=success`,
       cancelUrl: `${window.location.origin}/?checkout=cancel`,
-      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es', deliveryMethod: deliveryMethod || 'pickup' },
+      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es', deliveryMethod: deliveryMethod || 'pickup', applyProcessingFee: cardType === 'credit' ? 'true' : 'false' },
     })
     if (!url) {
       setSending(false)
@@ -347,6 +354,32 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     </button>
                   </div>
                   {deliveryMethodError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.deliveryMethodError')}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.cardTypeLabel')} *</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setCardType('credit'); setCardTypeError(false) }}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        cardType === 'credit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.cardTypeCredit')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCardType('debit'); setCardTypeError(false) }}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        cardType === 'debit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.cardTypeDebit')}
+                    </button>
+                  </div>
+                  {cardTypeError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.cardTypeError')}</p>}
+                  <p className="text-xs text-brown-mid mt-1">{t('orders.cardTypeNote')}</p>
                 </div>
 
                 <p className="text-xs text-brown-mid">{deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}</p>

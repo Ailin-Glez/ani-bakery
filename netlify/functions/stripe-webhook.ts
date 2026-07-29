@@ -6,7 +6,9 @@ import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
 
 const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
 const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
-const PICKUP_MAPS_URL = 'https://maps.app.goo.gl/svhvNBET5vKPFj447'
+// A direct maps.google.com query URL instead of a shortened maps.app.goo.gl redirect link —
+// link shorteners/redirects are commonly flagged by spam filters in transactional email.
+const PICKUP_MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(PICKUP_ADDRESS)}`
 
 // Reused across warm Lambda invocations instead of re-instantiated per request.
 let stripeClient: Stripe | undefined

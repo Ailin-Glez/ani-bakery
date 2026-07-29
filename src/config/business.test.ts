@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   getMinOrderDate,
+  getOrderLeadDays,
   isOrderDateValid,
   buildOrderMessage,
   buildWhatsAppOrderLink,
@@ -12,16 +13,45 @@ import {
   getDeliveryFee,
   DELIVERY_FEE,
   ORDER_MIN_LEAD_DAYS,
+  LATE_ORDER_CUTOFF_HOUR,
 } from './business'
 
+// Wednesday 2026-07-29, well before and at/after the 8pm cutoff.
+const BEFORE_CUTOFF = new Date(2026, 6, 29, 10, 0, 0)
+const AT_CUTOFF = new Date(2026, 6, 29, 20, 0, 0)
+const AFTER_CUTOFF = new Date(2026, 6, 29, 23, 30, 0)
+
+describe('getOrderLeadDays', () => {
+  it('returns the standard lead time before the cutoff hour', () => {
+    expect(getOrderLeadDays(BEFORE_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS)
+  })
+
+  it('returns one extra day at/after the cutoff hour', () => {
+    expect(getOrderLeadDays(AT_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS + 1)
+    expect(getOrderLeadDays(AFTER_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS + 1)
+  })
+})
+
 describe('getMinOrderDate', () => {
-  it('returns today + ORDER_MIN_LEAD_DAYS in YYYY-MM-DD format', () => {
+  it('defaults to the current time when no date is passed', () => {
     const expected = new Date()
-    expected.setDate(expected.getDate() + ORDER_MIN_LEAD_DAYS)
+    expected.setDate(expected.getDate() + ORDER_MIN_LEAD_DAYS + (expected.getHours() >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0))
     const yyyy = expected.getFullYear()
     const mm = String(expected.getMonth() + 1).padStart(2, '0')
     const dd = String(expected.getDate()).padStart(2, '0')
     expect(getMinOrderDate()).toBe(`${yyyy}-${mm}-${dd}`)
+  })
+
+  it('adds the standard lead time for orders placed before the cutoff hour', () => {
+    expect(getMinOrderDate(BEFORE_CUTOFF)).toBe('2026-07-31')
+  })
+
+  it('adds one extra day for orders placed exactly at the cutoff hour', () => {
+    expect(getMinOrderDate(AT_CUTOFF)).toBe('2026-08-01')
+  })
+
+  it('adds one extra day for orders placed after the cutoff hour', () => {
+    expect(getMinOrderDate(AFTER_CUTOFF)).toBe('2026-08-01')
   })
 })
 
@@ -31,12 +61,19 @@ describe('isOrderDateValid', () => {
   })
 
   it('rejects a date before the minimum lead time', () => {
-    const today = new Date().toISOString().slice(0, 10)
-    expect(isOrderDateValid(today)).toBe(false)
+    expect(isOrderDateValid('2026-07-29', BEFORE_CUTOFF)).toBe(false)
   })
 
-  it('accepts a date exactly at the minimum lead time', () => {
-    expect(isOrderDateValid(getMinOrderDate())).toBe(true)
+  it('accepts a date exactly at the minimum lead time before the cutoff hour', () => {
+    expect(isOrderDateValid('2026-07-31', BEFORE_CUTOFF)).toBe(true)
+  })
+
+  it('rejects the standard lead-time date when placed after the cutoff hour', () => {
+    expect(isOrderDateValid('2026-07-31', AFTER_CUTOFF)).toBe(false)
+  })
+
+  it('accepts the extended lead-time date when placed after the cutoff hour', () => {
+    expect(isOrderDateValid('2026-08-01', AFTER_CUTOFF)).toBe(true)
   })
 
   it('accepts a date well in the future', () => {

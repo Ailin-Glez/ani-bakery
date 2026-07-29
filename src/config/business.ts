@@ -102,6 +102,9 @@ export async function createCheckoutSession(params: {
 }
 
 export const ORDER_MIN_LEAD_DAYS = 2
+// Orders placed at or after this hour (24h, local time) need one extra day of lead
+// time — there's no way to get same-evening prep started in time otherwise.
+export const LATE_ORDER_CUTOFF_HOUR = 20
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear()
@@ -110,14 +113,18 @@ function toDateInputValue(date: Date) {
   return `${year}-${month}-${day}`
 }
 
-export function getMinOrderDate() {
-  const date = new Date()
-  date.setDate(date.getDate() + ORDER_MIN_LEAD_DAYS)
+export function getOrderLeadDays(now: Date = new Date()) {
+  return ORDER_MIN_LEAD_DAYS + (now.getHours() >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0)
+}
+
+export function getMinOrderDate(now: Date = new Date()) {
+  const date = new Date(now)
+  date.setDate(date.getDate() + getOrderLeadDays(now))
   return toDateInputValue(date)
 }
 
-export function isOrderDateValid(dateStr: string) {
-  return !!dateStr && dateStr >= getMinOrderDate()
+export function isOrderDateValid(dateStr: string, now: Date = new Date()) {
+  return !!dateStr && dateStr >= getMinOrderDate(now)
 }
 
 interface BlockedRange {

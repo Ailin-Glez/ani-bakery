@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, createCheckoutSession, isOrderDateValid, getBlockedRange, getDeliveryFee, getCardProcessingFee, DELIVERY_FEE } from '../config/business'
+import { business, createCheckoutSession, isOrderDateValid, getMinOrderDate, getOrderLeadDays, getBlockedRange, getDeliveryFee, getCardProcessingFee, DELIVERY_FEE } from '../config/business'
 import type { DeliveryMethod } from '../types'
 
 interface CartItem {
@@ -121,7 +121,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
   const getDateValidityMessage = (value: string) => {
     if (!value) return ''
-    if (!isOrderDateValid(value)) return t('orders.dateError')
+    if (!isOrderDateValid(value)) return t('orders.dateError', { days: getOrderLeadDays(), date: getMinOrderDate() })
     const blocked = getBlockedRange(value, outOfOfficeRanges)
     if (blocked) return `${t('orders.dateBlockedPrefix')} ${blocked.reason}`
     return ''

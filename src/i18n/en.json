@@ -45,7 +45,7 @@
     "productOther": "Other (I'll describe it in the notes)",
     "quantity": "Quantity",
     "date": "Desired date",
-    "dateError": "Date must be at least 2 days from today.",
+    "dateError": "The date must be at least {{days}} days from today (on or after {{date}}).",
     "dateBlockedPrefix": "Unavailable those days:",
     "upcomingOutOfOffice": "Upcoming unavailable dates",
     "notes": "Additional notes",

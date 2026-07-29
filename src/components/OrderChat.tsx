@@ -361,15 +361,6 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => { setCardType('credit'); setCardTypeError(false) }}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
-                        cardType === 'credit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
-                      }`}
-                    >
-                      {t('orders.cardTypeCredit')}
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => { setCardType('debit'); setCardTypeError(false) }}
                       className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
                         cardType === 'debit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
@@ -377,13 +368,20 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     >
                       {t('orders.cardTypeDebit')}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCardType('credit'); setCardTypeError(false) }}
+                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
+                        cardType === 'credit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
+                      }`}
+                    >
+                      {t('orders.cardTypeCredit')}
+                    </button>
                   </div>
                   {cardTypeError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.cardTypeError')}</p>}
-                  {cardType === 'credit' && (
-                    <p className="text-xs text-brown-mid mt-1">
-                      {t('orders.cardTypeNote', { percent: (SURCHARGE_CAP_PERCENT * 100).toFixed(0) })}
-                    </p>
-                  )}
+                  <p className={`text-xs font-semibold text-burgundy mt-1 ${cardType === 'credit' ? '' : 'invisible'}`}>
+                    {t('orders.cardTypeNote', { percent: (SURCHARGE_CAP_PERCENT * 100).toFixed(0) })}
+                  </p>
                 </div>
 
                 <p className="text-xs text-brown-mid">{deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}</p>

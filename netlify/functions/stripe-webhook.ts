@@ -6,9 +6,6 @@ import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
 
 const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
 const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
-// A direct maps.google.com query URL instead of a shortened maps.app.goo.gl redirect link —
-// link shorteners/redirects are commonly flagged by spam filters in transactional email.
-const PICKUP_MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(PICKUP_ADDRESS)}`
 
 // Reused across warm Lambda invocations instead of re-instantiated per request.
 let stripeClient: Stripe | undefined
@@ -32,10 +29,9 @@ async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | 
   const thankYouText = isEn
     ? `Thank you for your order! You can view or download your invoice using the button below.`
     : `¡Gracias por tu pedido! Podés ver o descargar tu factura con el botón de abajo.`
-  const mapsLink = `<a href="${PICKUP_MAPS_URL}" style="color:#6B7A50;">${isEn ? 'Open in Google Maps' : 'Abrir en Google Maps'}</a>`
   const pickupText = isEn
-    ? `\n\nPickup address: ${PICKUP_ADDRESS} (${mapsLink})`
-    : `\n\nDirección de retiro: ${PICKUP_ADDRESS} (${mapsLink})`
+    ? `\n\nPickup address: ${PICKUP_ADDRESS}`
+    : `\n\nDirección de retiro: ${PICKUP_ADDRESS}`
   const bodyText = thankYouText + (deliveryMethod === 'delivery' ? '' : pickupText)
   const html = renderBrandedEmail({
     heading,

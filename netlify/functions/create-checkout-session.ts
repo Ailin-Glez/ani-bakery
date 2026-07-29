@@ -44,6 +44,7 @@ export const handler: Handler = async event => {
           product_data: { name: item.product, metadata: { kind: item.kind || 'product' } },
         },
       })),
+      locale: metadata?.language === 'en' ? 'en' : 'es',
       phone_number_collection: { enabled: true },
       // Only ask for a shipping address when the customer chose delivery; pickup orders don't need one.
       ...(metadata?.deliveryMethod === 'delivery' ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),

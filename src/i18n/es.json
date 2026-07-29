@@ -47,7 +47,6 @@
     "email": "Email",
     "product": "Producto",
     "productPlaceholder": "Selecciona un producto...",
-    "productOther": "Otro (lo describo en las notas)",
     "quantity": "Cantidad",
     "date": "Fecha deseada",
     "dateError": "La fecha debe ser al menos {{days}} días después de hoy (a partir del {{date}}).",

@@ -4,7 +4,7 @@ import { getAdminDb } from './lib/firebaseAdmin'
 import { getDeliveryFee, getCardProcessingFee } from '../../src/config/business'
 
 interface RequestItem {
-  productId?: string
+  productId: string
   product: string
   quantity: number
 }
@@ -63,7 +63,12 @@ export const handler: Handler = async event => {
 
     const isEn = metadata?.language === 'en'
     const db = getAdminDb()
-    const productIds = [...new Set(items.map(i => i.productId).filter((id): id is string => !!id))]
+
+    if (items.some(i => !i.productId)) {
+      return { statusCode: 400, body: 'All items must reference a catalog product' }
+    }
+
+    const productIds = [...new Set(items.map(i => i.productId))]
     const productDocs = await Promise.all(productIds.map(id => db.collection('products').doc(id).get()))
     const productsById = new Map(productDocs.filter(d => d.exists).map(d => [d.id, d.data() as ProductDoc]))
 
@@ -73,36 +78,23 @@ export const handler: Handler = async event => {
     for (const item of items) {
       const requestedQuantity = Math.max(1, Math.floor(Number(item.quantity)) || 1)
 
-      if (item.productId) {
-        // Catalog product: price, availability and quantity cap come from Firestore,
-        // never from the client, so a tampered request can't buy a real product for less.
-        const product = productsById.get(item.productId)
-        if (!product || !product.available) {
-          return { statusCode: 400, body: 'Invalid or unavailable product' }
-        }
-        const quantity = product.maxQuantity != null ? Math.min(requestedQuantity, product.maxQuantity) : requestedQuantity
-        const name = isEn && product.nameEn ? product.nameEn : product.name
-        subtotal += product.price * quantity
-        lineItems.push({
-          quantity,
-          price_data: {
-            currency: 'usd',
-            unit_amount: Math.round(product.price * 100),
-            product_data: { name, metadata: { kind: 'product' } },
-          },
-        })
-      } else {
-        // Custom, unpriced item (bespoke request described in notes) — always $0,
-        // the real price gets negotiated with the customer afterward.
-        lineItems.push({
-          quantity: requestedQuantity,
-          price_data: {
-            currency: 'usd',
-            unit_amount: 0,
-            product_data: { name: String(item.product).slice(0, 200), metadata: { kind: 'product' } },
-          },
-        })
+      // Catalog product: price, availability and quantity cap come from Firestore,
+      // never from the client, so a tampered request can't buy a real product for less.
+      const product = productsById.get(item.productId)
+      if (!product || !product.available) {
+        return { statusCode: 400, body: 'Invalid or unavailable product' }
       }
+      const quantity = product.maxQuantity != null ? Math.min(requestedQuantity, product.maxQuantity) : requestedQuantity
+      const name = isEn && product.nameEn ? product.nameEn : product.name
+      subtotal += product.price * quantity
+      lineItems.push({
+        quantity,
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(product.price * 100),
+          product_data: { name, metadata: { kind: 'product' } },
+        },
+      })
     }
 
     const deliveryMethod = metadata?.deliveryMethod === 'delivery' ? 'delivery' : 'pickup'

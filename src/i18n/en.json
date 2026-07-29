@@ -47,7 +47,6 @@
     "email": "Email",
     "product": "Product",
     "productPlaceholder": "Select a product...",
-    "productOther": "Other (I'll describe it in the notes)",
     "quantity": "Quantity",
     "date": "Desired date",
     "dateError": "The date must be at least {{days}} days from today (on or after {{date}}).",

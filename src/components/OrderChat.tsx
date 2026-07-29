@@ -7,7 +7,7 @@ import { business, createCheckoutSession, isOrderDateValid, getMinOrderDate, get
 import type { DeliveryMethod } from '../types'
 
 interface CartItem {
-  productId?: string
+  productId: string
   product: string
   productEn: string
   quantity: number
@@ -56,8 +56,6 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const { ranges: outOfOfficeRanges } = useOutOfOffice()
   const [step, setStep] = useState<Step>('product')
   const [cart, setCart] = useState<CartItem[]>([])
-  const [customName, setCustomName] = useState('')
-  const [addingCustom, setAddingCustom] = useState(false)
   const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod | ''>('')
   const [deliveryMethodError, setDeliveryMethodError] = useState(false)
@@ -73,19 +71,20 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   useEffect(() => {
     if (open && initialProduct) {
       const matched = products.find(p => p.name === initialProduct)
+      if (!matched) return
       setCart([{
-        productId: matched?.id,
+        productId: matched.id,
         product: initialProduct,
-        productEn: matched?.nameEn || initialProduct,
+        productEn: matched.nameEn || initialProduct,
         quantity: 1,
-        unitPrice: matched?.price ?? 0,
-        maxQuantity: matched?.maxQuantity,
+        unitPrice: matched.price,
+        maxQuantity: matched.maxQuantity,
       }])
       setStep('product')
     }
   }, [open, initialProduct, products])
 
-  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCardType(''); setCardTypeError(false); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCardType(''); setCardTypeError(false); setStep('product'); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
   const addToCart = (p: { id: string; name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
@@ -100,13 +99,6 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       }
       return [...prev, { productId: p.id, product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price, maxQuantity: p.maxQuantity }]
     })
-  }
-
-  const addCustomItem = () => {
-    if (!customName.trim()) return
-    setCart(prev => [...prev, { product: customName.trim(), productEn: customName.trim(), quantity: 1, unitPrice: 0 }])
-    setCustomName('')
-    setAddingCustom(false)
   }
 
   const changeQuantity = (product: string, delta: number) => {
@@ -267,29 +259,6 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     </button>
                   )
                 })}
-
-                {addingCustom ? (
-                  <div className="flex gap-2">
-                    <input
-                      autoFocus
-                      value={customName}
-                      onChange={e => setCustomName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') addCustomItem() }}
-                      placeholder={isEn ? 'What would you like to order?' : '¿Qué quieres encargar?'}
-                      className={inputClass}
-                    />
-                    <button onClick={addCustomItem} className="btn-primary text-sm px-4 flex-shrink-0">
-                      {isEn ? 'Add' : 'Agregar'}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setAddingCustom(true)}
-                    className="text-left px-4 py-3 rounded-2xl border-2 border-dashed border-rose bg-cream-light text-brown-mid hover:border-wine/60 transition-all text-sm"
-                  >
-                    {t('orders.productOther')}
-                  </button>
-                )}
               </div>
 
               {cart.length > 0 && (

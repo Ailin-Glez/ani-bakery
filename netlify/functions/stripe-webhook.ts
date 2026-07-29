@@ -22,7 +22,9 @@ function getResend() {
 }
 
 async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | undefined, isEn: boolean, deliveryMethod: string) {
-  if (!email || !invoice.hosted_invoice_url || !process.env.RESEND_API_KEY) return
+  if (!process.env.RESEND_API_KEY) return 'skipped: missing RESEND_API_KEY'
+  if (!email) return 'skipped: no customer email on session'
+  if (!invoice.hosted_invoice_url) return `skipped: invoice has no hosted_invoice_url (status: ${invoice.status})`
 
   const heading = isEn ? 'Here\'s your receipt' : 'Aquí está tu factura'
   const thankYouText = isEn
@@ -40,12 +42,14 @@ async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | 
     ctaUrl: invoice.hosted_invoice_url,
   })
 
-  await getResend().emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: isEn ? 'Your receipt - Ani\'s Artisan Bakery' : 'Tu factura - Ani\'s Artisan Bakery',
     html,
   })
+  if (error) return `resend error: ${JSON.stringify(error)}`
+  return `sent to ${email} (resend id: ${data?.id})`
 }
 
 function formatAddress(address: Stripe.Address | null | undefined) {
@@ -59,7 +63,7 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   const db = getAdminDb()
 
   const existing = await db.collection('sales').where('orderId', '==', session.id).limit(1).get()
-  if (!existing.empty) return
+  if (!existing.empty) return 'skipped: sale already recorded for this session'
 
   const fullSession = await stripe.checkout.sessions.retrieve(session.id, { expand: ['line_items', 'line_items.data.price.product'] })
   const allLineItems = fullSession.line_items?.data || []
@@ -107,13 +111,15 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   })))
 
   const invoiceId = typeof fullSession.invoice === 'string' ? fullSession.invoice : fullSession.invoice?.id
-  if (invoiceId) {
-    try {
-      const invoice = await stripe.invoices.retrieve(invoiceId)
-      await emailInvoiceLink(invoice, customerDetails?.email, metadata.language === 'en', metadata.deliveryMethod || 'pickup')
-    } catch (err) {
-      console.error('stripe-webhook: failed to email invoice:', err)
-    }
+  if (!invoiceId) return 'sale recorded — no invoice id on session'
+
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId)
+    const emailStatus = await emailInvoiceLink(invoice, customerDetails?.email, metadata.language === 'en', metadata.deliveryMethod || 'pickup')
+    return `sale recorded — invoice email: ${emailStatus}`
+  } catch (err) {
+    console.error('stripe-webhook: failed to email invoice:', err)
+    return `sale recorded — invoice email threw: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
@@ -152,12 +158,14 @@ export const handler: Handler = async event => {
   }
 
   try {
+    let status = 'ignored: unhandled event type'
     if (stripeEvent.type === 'checkout.session.completed') {
-      await handleCheckoutCompleted(stripe, stripeEvent.data.object as Stripe.Checkout.Session)
+      status = await handleCheckoutCompleted(stripe, stripeEvent.data.object as Stripe.Checkout.Session) || 'done'
     } else if (stripeEvent.type === 'charge.refunded') {
       await handleChargeRefunded(stripeEvent.data.object as Stripe.Charge)
+      status = 'refund processed'
     }
-    return { statusCode: 200, body: 'ok' }
+    return { statusCode: 200, body: status }
   } catch (err) {
     console.error('stripe-webhook error:', err)
     return { statusCode: 500, body: 'Internal error' }

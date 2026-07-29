@@ -50,6 +50,43 @@ async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | 
   return `sent to ${email} (resend id: ${data?.id})`
 }
 
+const REFUND_REASON_LABEL: Record<string, { en: string; es: string }> = {
+  duplicate: { en: 'Duplicate charge', es: 'Cargo duplicado' },
+  fraudulent: { en: 'Fraudulent charge', es: 'Cargo fraudulento' },
+  requested_by_customer: { en: 'Requested by customer', es: 'A pedido del cliente' },
+}
+
+async function emailRefundNotice(email: string | null | undefined, isEn: boolean, amount: number, reason: string | null) {
+  if (!process.env.RESEND_API_KEY) return 'skipped: missing RESEND_API_KEY'
+  if (!email) return 'skipped: no customer email on sale record'
+
+  const reasonLabel = reason ? REFUND_REASON_LABEL[reason]?.[isEn ? 'en' : 'es'] || reason : null
+  const heading = isEn ? 'Your refund has been issued' : 'Se procesó tu reembolso'
+  const lines = [
+    isEn
+      ? `We've refunded $${amount.toFixed(2)} to your original payment method.`
+      : `Te reembolsamos $${amount.toFixed(2)} a tu método de pago original.`,
+    ...(reasonLabel ? [isEn ? `Reason: ${reasonLabel}` : `Motivo: ${reasonLabel}`] : []),
+    '',
+    isEn
+      ? 'Refunds typically take 5–10 business days to appear on your statement. Processing fees from the original payment are not refunded.'
+      : 'Los reembolsos tardan entre cinco y diez días hábiles en aparecer en tu cuenta. Los cargos de procesamiento del pago original no se reembolsan.',
+  ]
+  const html = renderBrandedEmail({
+    heading,
+    bodyHtml: textToHtmlParagraphs(lines.join('\n')),
+  })
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    subject: isEn ? 'Your refund - Ani\'s Artisan Bakery' : 'Tu reembolso - Ani\'s Artisan Bakery',
+    html,
+  })
+  if (error) return `resend error: ${JSON.stringify(error)}`
+  return `sent to ${email} (resend id: ${data?.id})`
+}
+
 function formatAddress(address: Stripe.Address | null | undefined) {
   if (!address) return ''
   return [address.line1, address.line2, address.city, address.state, address.postal_code, address.country]
@@ -121,16 +158,24 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   }
 }
 
-async function handleChargeRefunded(charge: Stripe.Charge) {
-  if (!charge.refunded) return
+async function handleChargeRefunded(stripe: Stripe, charge: Stripe.Charge) {
+  if (!charge.refunded) return 'ignored: charge not fully/partially refunded'
   const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
-  if (!paymentIntentId) return
+  if (!paymentIntentId) return 'ignored: no payment intent on charge'
 
   const db = getAdminDb()
   const matches = await db.collection('sales').where('stripePaymentIntentId', '==', paymentIntentId).get()
-  if (matches.empty) return
+  if (matches.empty) return 'skipped: no matching sale for this payment intent'
 
   await Promise.all(matches.docs.map(doc => doc.ref.update({ status: 'cancelled', total: 0, unitPrice: 0, deliveryFee: 0, processingFee: 0 })))
+
+  const sale = matches.docs[0].data() as { email?: string; language?: string }
+  const latestRefund = await stripe.refunds.list({ charge: charge.id, limit: 1 })
+  const refund = latestRefund.data[0]
+  if (!refund) return 'sales cancelled — no refund object found to notify customer'
+
+  const emailStatus = await emailRefundNotice(sale.email, sale.language === 'en', refund.amount / 100, refund.reason ?? null)
+  return `sales cancelled — refund email: ${emailStatus}`
 }
 
 export const handler: Handler = async event => {
@@ -160,8 +205,7 @@ export const handler: Handler = async event => {
     if (stripeEvent.type === 'checkout.session.completed') {
       status = await handleCheckoutCompleted(stripe, stripeEvent.data.object as Stripe.Checkout.Session) || 'done'
     } else if (stripeEvent.type === 'charge.refunded') {
-      await handleChargeRefunded(stripeEvent.data.object as Stripe.Charge)
-      status = 'refund processed'
+      status = await handleChargeRefunded(stripe, stripeEvent.data.object as Stripe.Charge) || 'done'
     }
     return { statusCode: 200, body: status }
   } catch (err) {

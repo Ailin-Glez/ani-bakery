@@ -5,14 +5,21 @@ import { getAdminDb } from './lib/firebaseAdmin'
 import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
 
 const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
+const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
+const PICKUP_MAPS_URL = 'https://maps.app.goo.gl/svhvNBET5vKPFj447'
 
-async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | undefined, isEn: boolean) {
+async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | undefined, isEn: boolean, deliveryMethod: string) {
   if (!email || !invoice.hosted_invoice_url || !process.env.RESEND_API_KEY) return
 
   const heading = isEn ? 'Here\'s your receipt' : 'Aquí está tu factura'
-  const bodyText = isEn
+  const thankYouText = isEn
     ? `Thank you for your order! You can view or download your invoice using the button below.`
     : `¡Gracias por tu pedido! Podés ver o descargar tu factura con el botón de abajo.`
+  const mapsLink = `<a href="${PICKUP_MAPS_URL}" style="color:#6B7A50;">${isEn ? 'Open in Google Maps' : 'Abrir en Google Maps'}</a>`
+  const pickupText = isEn
+    ? `\n\nPickup address: ${PICKUP_ADDRESS} (${mapsLink})`
+    : `\n\nDirección de retiro: ${PICKUP_ADDRESS} (${mapsLink})`
+  const bodyText = thankYouText + (deliveryMethod === 'delivery' ? '' : pickupText)
   const html = renderBrandedEmail({
     heading,
     bodyHtml: textToHtmlParagraphs(bodyText),
@@ -91,7 +98,7 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   if (invoiceId) {
     try {
       const invoice = await stripe.invoices.retrieve(invoiceId)
-      await emailInvoiceLink(invoice, customerDetails?.email, metadata.language === 'en')
+      await emailInvoiceLink(invoice, customerDetails?.email, metadata.language === 'en', metadata.deliveryMethod || 'pickup')
     } catch (err) {
       console.error('stripe-webhook: failed to email invoice:', err)
     }

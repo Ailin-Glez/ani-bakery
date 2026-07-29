@@ -47,6 +47,20 @@ export const handler: Handler = async event => {
       return { statusCode: 400, body: 'Missing required fields' }
     }
 
+    // Only ever redirect back to whichever site is calling this function (prod, a
+    // branch deploy, a deploy preview, or local dev) — never to an attacker-supplied domain.
+    const requestOrigin = event.headers.origin || (event.headers.host ? `https://${event.headers.host}` : '')
+    const isSameOrigin = (url: string) => {
+      try {
+        return !!requestOrigin && new URL(url).origin === new URL(requestOrigin).origin
+      } catch {
+        return false
+      }
+    }
+    if (!isSameOrigin(successUrl) || !isSameOrigin(cancelUrl)) {
+      return { statusCode: 400, body: 'Invalid redirect URL' }
+    }
+
     const isEn = metadata?.language === 'en'
     const db = getAdminDb()
     const productIds = [...new Set(items.map(i => i.productId).filter((id): id is string => !!id))]

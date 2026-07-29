@@ -28,10 +28,16 @@ export function getDeliveryFee(deliveryMethod: 'pickup' | 'delivery') {
 export const STRIPE_FEE_PERCENT = 0.029
 export const STRIPE_FEE_FIXED = 0.3
 
+// Visa caps card surcharges at 3% regardless of actual processing cost — on small
+// orders the grossed-up formula above can exceed that, so we cap the result here.
+export const SURCHARGE_CAP_PERCENT = 0.03
+
 export function getCardProcessingFee(subtotal: number) {
   if (subtotal <= 0) return 0
   const grossedUp = (subtotal + STRIPE_FEE_FIXED) / (1 - STRIPE_FEE_PERCENT)
-  return Math.round((grossedUp - subtotal) * 100) / 100
+  const fee = grossedUp - subtotal
+  const cap = subtotal * SURCHARGE_CAP_PERCENT
+  return Math.round(Math.min(fee, cap) * 100) / 100
 }
 
 export function buildWhatsAppOrderLink(message: string) {

@@ -107,7 +107,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
   const matches = await db.collection('sales').where('stripePaymentIntentId', '==', paymentIntentId).get()
   if (matches.empty) return
 
-  await Promise.all(matches.docs.map(doc => doc.ref.update({ status: 'cancelled', total: 0, unitPrice: 0 })))
+  await Promise.all(matches.docs.map(doc => doc.ref.update({ status: 'cancelled', total: 0, unitPrice: 0, deliveryFee: 0, processingFee: 0 })))
 }
 
 export const handler: Handler = async event => {

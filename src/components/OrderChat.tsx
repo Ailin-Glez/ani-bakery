@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2 } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, createCheckoutSession, isOrderDateValid, getMinOrderDate, getOrderLeadDays, getBlockedRange, getDeliveryFee, getCardProcessingFee, DELIVERY_FEE } from '../config/business'
+import { business, createCheckoutSession, isOrderDateValid, getMinOrderDate, getOrderLeadDays, getBlockedRange, getDeliveryFee, getCardProcessingFee, DELIVERY_FEE, STRIPE_FEE_PERCENT, STRIPE_FEE_FIXED } from '../config/business'
 import type { DeliveryMethod } from '../types'
 
 interface CartItem {
@@ -379,7 +379,11 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     </button>
                   </div>
                   {cardTypeError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.cardTypeError')}</p>}
-                  <p className="text-xs text-brown-mid mt-1">{t('orders.cardTypeNote')}</p>
+                  {cardType === 'credit' && (
+                    <p className="text-xs text-brown-mid mt-1">
+                      {t('orders.cardTypeNote', { percent: (STRIPE_FEE_PERCENT * 100).toFixed(1), fixed: STRIPE_FEE_FIXED.toFixed(2) })}
+                    </p>
+                  )}
                 </div>
 
                 <p className="text-xs text-brown-mid">{deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}</p>

@@ -41,7 +41,7 @@
     "cardTypeCredit": "Credit",
     "cardTypeDebit": "Debit",
     "cardTypeError": "Choose credit or debit to continue.",
-    "cardTypeNote": "The processing fee only applies if you pay with a credit card.",
+    "cardTypeNote": "A processing fee ({{percent}}% + ${{fixed}}) will be applied for paying with a credit card.",
     "stripeCollectNote": "Stripe will ask for your name, phone, and delivery address on the payment screen.",
     "stripeCollectNotePickup": "Stripe will ask for your name and phone on the payment screen.",
     "email": "Email",

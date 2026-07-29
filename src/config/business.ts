@@ -25,8 +25,8 @@ export function getDeliveryFee(deliveryMethod: 'pickup' | 'delivery') {
 
 // Stripe's standard US card rate. Grossing up by this formula means Stripe's fee
 // on the *surcharged* total still nets us exactly `subtotal` after they take their cut.
-const STRIPE_FEE_PERCENT = 0.029
-const STRIPE_FEE_FIXED = 0.3
+export const STRIPE_FEE_PERCENT = 0.029
+export const STRIPE_FEE_FIXED = 0.3
 
 export function getCardProcessingFee(subtotal: number) {
   if (subtotal <= 0) return 0

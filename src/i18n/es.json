@@ -41,7 +41,7 @@
     "cardTypeCredit": "Crédito",
     "cardTypeDebit": "Débito",
     "cardTypeError": "Elige crédito o débito para continuar.",
-    "cardTypeNote": "El cargo por procesamiento solo aplica si pagás con tarjeta de crédito.",
+    "cardTypeNote": "Se aplicará un cargo por procesamiento de pago ({{percent}}% + ${{fixed}}) por pagar con tarjeta de crédito.",
     "stripeCollectNote": "Stripe te va a pedir tu nombre, teléfono y dirección de entrega en la pantalla de pago.",
     "stripeCollectNotePickup": "Stripe te va a pedir tu nombre y teléfono en la pantalla de pago.",
     "email": "Email",

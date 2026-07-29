@@ -8,6 +8,19 @@ const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
 const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
 const PICKUP_MAPS_URL = 'https://maps.app.goo.gl/svhvNBET5vKPFj447'
 
+// Reused across warm Lambda invocations instead of re-instantiated per request.
+let stripeClient: Stripe | undefined
+function getStripe() {
+  if (!stripeClient) stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY as string)
+  return stripeClient
+}
+
+let resendClient: Resend | undefined
+function getResend() {
+  if (!resendClient) resendClient = new Resend(process.env.RESEND_API_KEY as string)
+  return resendClient
+}
+
 async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | undefined, isEn: boolean, deliveryMethod: string) {
   if (!email || !invoice.hosted_invoice_url || !process.env.RESEND_API_KEY) return
 
@@ -27,8 +40,7 @@ async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | 
     ctaUrl: invoice.hosted_invoice_url,
   })
 
-  const resend = new Resend(process.env.RESEND_API_KEY)
-  await resend.emails.send({
+  await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: isEn ? 'Your receipt - Ani\'s Artisan Bakery' : 'Tu factura - Ani\'s Artisan Bakery',
@@ -127,7 +139,7 @@ export const handler: Handler = async event => {
     return { statusCode: 500, body: 'Webhook not configured' }
   }
 
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+  const stripe = getStripe()
   const signature = event.headers['stripe-signature']
   const rawBody = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString('utf8') : event.body || ''
 

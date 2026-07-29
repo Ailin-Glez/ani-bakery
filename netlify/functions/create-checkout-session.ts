@@ -1,14 +1,29 @@
 import type { Handler } from '@netlify/functions'
 import Stripe from 'stripe'
+import { getAdminDb } from './lib/firebaseAdmin'
+import { getDeliveryFee, getCardProcessingFee } from '../../src/config/business'
 
-interface CartItem {
+interface RequestItem {
+  productId?: string
   product: string
   quantity: number
-  unitPrice: number
-  kind?: 'shipping' | 'fee'
+}
+
+interface ProductDoc {
+  name: string
+  nameEn?: string
+  price: number
+  available: boolean
+  maxQuantity?: number
 }
 
 const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
+
+let stripeClient: Stripe | undefined
+function getStripe() {
+  if (!stripeClient) stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY as string)
+  return stripeClient
+}
 
 export const handler: Handler = async event => {
   if (event.httpMethod !== 'POST') {
@@ -22,7 +37,7 @@ export const handler: Handler = async event => {
 
   try {
     const { items, successUrl, cancelUrl, metadata } = JSON.parse(event.body || '{}') as {
-      items?: CartItem[]
+      items?: RequestItem[]
       successUrl?: string
       cancelUrl?: string
       metadata?: Record<string, string>
@@ -32,31 +47,92 @@ export const handler: Handler = async event => {
       return { statusCode: 400, body: 'Missing required fields' }
     }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+    const isEn = metadata?.language === 'en'
+    const db = getAdminDb()
+    const productIds = [...new Set(items.map(i => i.productId).filter((id): id is string => !!id))]
+    const productDocs = await Promise.all(productIds.map(id => db.collection('products').doc(id).get()))
+    const productsById = new Map(productDocs.filter(d => d.exists).map(d => [d.id, d.data() as ProductDoc]))
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: items.map(item => ({
-        quantity: item.quantity,
+    let subtotal = 0
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = []
+
+    for (const item of items) {
+      const requestedQuantity = Math.max(1, Math.floor(Number(item.quantity)) || 1)
+
+      if (item.productId) {
+        // Catalog product: price, availability and quantity cap come from Firestore,
+        // never from the client, so a tampered request can't buy a real product for less.
+        const product = productsById.get(item.productId)
+        if (!product || !product.available) {
+          return { statusCode: 400, body: 'Invalid or unavailable product' }
+        }
+        const quantity = product.maxQuantity != null ? Math.min(requestedQuantity, product.maxQuantity) : requestedQuantity
+        const name = isEn && product.nameEn ? product.nameEn : product.name
+        subtotal += product.price * quantity
+        lineItems.push({
+          quantity,
+          price_data: {
+            currency: 'usd',
+            unit_amount: Math.round(product.price * 100),
+            product_data: { name, metadata: { kind: 'product' } },
+          },
+        })
+      } else {
+        // Custom, unpriced item (bespoke request described in notes) — always $0,
+        // the real price gets negotiated with the customer afterward.
+        lineItems.push({
+          quantity: requestedQuantity,
+          price_data: {
+            currency: 'usd',
+            unit_amount: 0,
+            product_data: { name: String(item.product).slice(0, 200), metadata: { kind: 'product' } },
+          },
+        })
+      }
+    }
+
+    const deliveryMethod = metadata?.deliveryMethod === 'delivery' ? 'delivery' : 'pickup'
+    const deliveryFee = getDeliveryFee(deliveryMethod)
+    if (deliveryFee > 0) {
+      subtotal += deliveryFee
+      lineItems.push({
+        quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: Math.round(item.unitPrice * 100),
-          product_data: { name: item.product, metadata: { kind: item.kind || 'product' } },
+          unit_amount: Math.round(deliveryFee * 100),
+          product_data: { name: isEn ? 'Delivery' : 'Envío', metadata: { kind: 'shipping' } },
         },
-      })),
-      locale: metadata?.language === 'en' ? 'en' : 'es',
+      })
+    }
+
+    const processingFee = getCardProcessingFee(subtotal)
+    if (processingFee > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(processingFee * 100),
+          product_data: { name: isEn ? 'Card processing fee' : 'Cargo por procesamiento de pago', metadata: { kind: 'fee' } },
+        },
+      })
+    }
+
+    const session = await getStripe().checkout.sessions.create({
+      mode: 'payment',
+      line_items: lineItems,
+      locale: isEn ? 'en' : 'es',
       phone_number_collection: { enabled: true },
       // Only ask for a shipping address when the customer chose delivery; pickup orders don't need one.
-      ...(metadata?.deliveryMethod === 'delivery' ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
+      ...(deliveryMethod === 'delivery' ? { shipping_address_collection: { allowed_countries: ['US'] } } : {}),
       customer_creation: 'always',
       invoice_creation: {
         enabled: true,
         // For pickup orders there's no shipping address on the invoice, so show
         // where to pick it up instead.
-        ...(metadata?.deliveryMethod !== 'delivery' ? {
+        ...(deliveryMethod !== 'delivery' ? {
           invoice_data: {
             custom_fields: [{
-              name: metadata?.language === 'en' ? 'Pickup address' : 'Dirección de retiro',
+              name: isEn ? 'Pickup address' : 'Dirección de retiro',
               value: PICKUP_ADDRESS,
             }],
           },

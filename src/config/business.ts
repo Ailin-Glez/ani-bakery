@@ -86,7 +86,7 @@ export async function sendOrderEmail(params: { subject: string; message: string;
 }
 
 export async function createCheckoutSession(params: {
-  items: { product: string; quantity: number; unitPrice: number; kind?: 'shipping' | 'fee' }[]
+  items: { productId?: string; product: string; quantity: number }[]
   successUrl: string
   cancelUrl: string
   metadata?: Record<string, string>

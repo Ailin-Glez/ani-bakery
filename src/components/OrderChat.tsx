@@ -7,6 +7,7 @@ import { business, createCheckoutSession, isOrderDateValid, getMinOrderDate, get
 import type { DeliveryMethod } from '../types'
 
 interface CartItem {
+  productId?: string
   product: string
   productEn: string
   quantity: number
@@ -71,6 +72,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
     if (open && initialProduct) {
       const matched = products.find(p => p.name === initialProduct)
       setCart([{
+        productId: matched?.id,
         product: initialProduct,
         productEn: matched?.nameEn || initialProduct,
         quantity: 1,
@@ -84,7 +86,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCustomName(''); setAddingCustom(false); setStep('product'); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
-  const addToCart = (p: { name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
+  const addToCart = (p: { id: string; name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
     setCart(prev => {
       const idx = prev.findIndex(item => item.product === p.name)
       if (idx >= 0) {
@@ -94,7 +96,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         next[idx] = { ...current, quantity: current.quantity + 1 }
         return next
       }
-      return [...prev, { product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price, maxQuantity: p.maxQuantity }]
+      return [...prev, { productId: p.id, product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price, maxQuantity: p.maxQuantity }]
     })
   }
 
@@ -162,10 +164,13 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const submitOrder = async () => {
     setSending(true)
     setSendError(false)
-    const items: { product: string; quantity: number; unitPrice: number; kind?: 'shipping' | 'fee' }[] =
-      cart.map(item => ({ product: isEn && item.productEn ? item.productEn : item.product, quantity: item.quantity, unitPrice: item.unitPrice }))
-    if (deliveryFee > 0) items.push({ product: isEn ? 'Delivery' : 'Envío', quantity: 1, unitPrice: deliveryFee, kind: 'shipping' })
-    if (processingFee > 0) items.push({ product: isEn ? 'Card processing fee' : 'Cargo por procesamiento de pago', quantity: 1, unitPrice: processingFee, kind: 'fee' })
+    // Prices aren't sent here — the server looks up each product's real price and
+    // computes delivery/processing fees itself, so a tampered request can't pay less.
+    const items = cart.map(item => ({
+      productId: item.productId,
+      product: isEn && item.productEn ? item.productEn : item.product,
+      quantity: item.quantity,
+    }))
     const url = await createCheckoutSession({
       items,
       successUrl: `${window.location.origin}/?checkout=success`,

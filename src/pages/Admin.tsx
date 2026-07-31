@@ -249,6 +249,11 @@ export default function Admin() {
     e.preventDefault()
     if (saleCart.length === 0 || !isValidCustomerName(saleForm.customerName)) return
     const orderId = crypto.randomUUID()
+    // Starting the sale directly at "In progress" or "Delivered" means it's past the
+    // payment step in the workflow, so treat it as already paid — otherwise it'd show
+    // as advanced in the stepper while still being deletable as if unpaid.
+    const startsPastPayment = saleForm.status === 'in_progress' || saleForm.status === 'delivered'
+    const paidAt = startsPastPayment ? new Date().toISOString() : undefined
     await Promise.all(saleCart.map(item => addSale({
       orderId,
       customerName: saleForm.customerName,
@@ -262,7 +267,8 @@ export default function Admin() {
       notes: saleForm.notes,
       status: saleForm.status,
       source: 'manual',
-      paid: false,
+      paid: startsPastPayment,
+      ...(startsPastPayment ? { paymentMethod: 'other' as const, paidAt } : {}),
       language: 'es',
     })))
     closeSaleModal()
@@ -338,9 +344,9 @@ export default function Admin() {
     const lang = sale.language || 'es'
     const items = [{ product: sale.productName, quantity: sale.quantity }]
     const message = buildPaymentConfirmationMessage({ name: sale.customerName, items, total: sale.total, date: sale.date }, lang === 'en')
-    if (sale.contactMethod === 'email' && sale.email) {
+    if (sale.contactMethod === 'email' && sale.email && user) {
       const subject = i18n.getFixedT(lang)('admin.paymentConfirmationSubject')
-      await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name })
+      await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name, idToken: await user.getIdToken() })
     } else {
       openWhatsAppLink(buildWhatsAppLinkTo(sale.phone, message))
     }
@@ -358,9 +364,9 @@ export default function Admin() {
     // Same rule as the payment confirmation: respect the language the customer ordered in.
     const lang = sale.language || 'es'
     const message = buildThankYouMessage({ name: sale.customerName }, lang === 'en')
-    if (sale.contactMethod === 'email' && sale.email) {
+    if (sale.contactMethod === 'email' && sale.email && user) {
       const subject = i18n.getFixedT(lang)('admin.thankYouSubject')
-      await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name })
+      await sendOrderEmail({ to: sale.email, subject, message, fromName: business.name, idToken: await user.getIdToken() })
     } else {
       openWhatsAppLink(buildWhatsAppLinkTo(sale.phone, message))
     }

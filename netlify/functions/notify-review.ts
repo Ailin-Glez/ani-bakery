@@ -1,6 +1,6 @@
 import type { Handler } from '@netlify/functions'
 import { Resend } from 'resend'
-import { renderBrandedEmail } from './lib/emailTemplate'
+import { renderBrandedEmail, escapeHtml } from './lib/emailTemplate'
 
 const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'ailinglez89@gmail.com'
 const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
@@ -33,9 +33,9 @@ export const handler: Handler = async event => {
     const html = renderBrandedEmail({
       heading: 'Nueva reseña pendiente de aprobación',
       bodyHtml: `
-        <p style="margin:0 0 8px;"><strong>Nombre:</strong> ${name}</p>
+        <p style="margin:0 0 8px;"><strong>Nombre:</strong> ${escapeHtml(name)}</p>
         <p style="margin:0 0 8px;"><strong>Calificación:</strong> ${stars}</p>
-        <p style="margin:0 0 8px;"><strong>Comentario:</strong> ${comment}</p>
+        <p style="margin:0 0 8px;"><strong>Comentario:</strong> ${escapeHtml(comment)}</p>
       `,
       ctaLabel: 'Entrar al panel para aprobar o rechazar →',
       ctaUrl: ADMIN_URL,

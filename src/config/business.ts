@@ -70,11 +70,14 @@ export function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
 
-export async function sendOrderEmail(params: { subject: string; message: string; replyTo?: string; fromName?: string; to?: string }) {
+// Admin-only: this hits a Netlify function that requires a valid Firebase ID token,
+// so the caller must be signed in (see Admin.tsx call sites for how `idToken` is obtained).
+export async function sendOrderEmail(params: { subject: string; message: string; replyTo?: string; fromName?: string; to?: string; idToken: string }) {
+  const { idToken, ...body } = params
   const response = await fetch('/.netlify/functions/send-order-email', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify(body),
   })
   if (!response.ok) return false
   const data = await response.json()
@@ -151,8 +154,15 @@ export function getMaxOrderDate(now: Date = new Date()) {
   return addBusinessDays(now, MAX_ORDER_LEAD_DAYS)
 }
 
+const DATE_FORMAT_REGEX = /^\d{4}-\d{2}-\d{2}$/
+
 export function isOrderDateValid(dateStr: string, hasCookies: boolean, now: Date = new Date()) {
-  return !!dateStr && dateStr >= getMinOrderDate(hasCookies, now) && dateStr <= getMaxOrderDate(now)
+  // The min/max comparisons below are plain string comparisons, so a malformed date
+  // (e.g. "2026-08-05-x") could slip between the bounds without ever equaling the
+  // canonical string other orders for that day are stored/matched under — enforcing
+  // the exact YYYY-MM-DD shape first closes that gap.
+  if (!DATE_FORMAT_REGEX.test(dateStr)) return false
+  return dateStr >= getMinOrderDate(hasCookies, now) && dateStr <= getMaxOrderDate(now)
 }
 
 // Product categories are a fixed set (not free text) so business rules — like the

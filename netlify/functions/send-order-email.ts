@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions'
 import { Resend } from 'resend'
 import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
+import { requireAdmin } from './lib/firebaseAdmin'
 
 const TO_EMAIL = process.env.NOTIFY_EMAIL || 'ailinglez89@gmail.com'
 const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
@@ -13,6 +14,13 @@ export const handler: Handler = async event => {
   if (!process.env.RESEND_API_KEY) {
     console.error('send-order-email: missing RESEND_API_KEY')
     return { statusCode: 500, body: 'Email service not configured' }
+  }
+
+  // Only the admin panel sends emails through this function (order/payment
+  // confirmations) — without this, anyone could use it as an open relay from
+  // the bakery's verified domain.
+  if (!await requireAdmin(event.headers.authorization)) {
+    return { statusCode: 401, body: 'Unauthorized' }
   }
 
   try {

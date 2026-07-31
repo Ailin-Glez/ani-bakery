@@ -14,9 +14,11 @@ interface EmailTemplateOptions {
   bodyHtml: string
   ctaLabel?: string
   ctaUrl?: string
+  isEn?: boolean
 }
 
-export function renderBrandedEmail({ heading, bodyHtml, ctaLabel, ctaUrl }: EmailTemplateOptions) {
+export function renderBrandedEmail({ heading, bodyHtml, ctaLabel, ctaUrl, isEn = false }: EmailTemplateOptions) {
+  const footerText = isEn ? 'Made with ♥' : 'Hecho con ♥'
   return `<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:0;background-color:${BRAND.creamLight};font-family:Georgia,'Times New Roman',serif;">
@@ -39,7 +41,7 @@ export function renderBrandedEmail({ heading, bodyHtml, ctaLabel, ctaUrl }: Emai
           </tr>
           <tr>
             <td style="padding:16px 24px;text-align:center;border-top:1px solid ${BRAND.rose};">
-              <p style="color:${BRAND.brownMid};font-size:12px;margin:0;">Ani's Artisan Bakery · Hecho con ♥</p>
+              <p style="color:${BRAND.brownMid};font-size:12px;margin:0;">Ani's Artisan Bakery · ${footerText}</p>
             </td>
           </tr>
         </table>
@@ -52,4 +54,15 @@ export function renderBrandedEmail({ heading, bodyHtml, ctaLabel, ctaUrl }: Emai
 
 export function textToHtmlParagraphs(text: string) {
   return text.split('\n').map(line => `<p style="margin:0 0 8px;">${line || '&nbsp;'}</p>`).join('')
+}
+
+// Escapes user-supplied text before it's interpolated into an HTML email body, so a
+// customer-entered field (e.g. a review's name/comment) can't inject markup/links.
+export function escapeHtml(text: string) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }

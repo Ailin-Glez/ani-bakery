@@ -6,6 +6,8 @@ import { renderBrandedEmail, textToHtmlParagraphs } from './lib/emailTemplate'
 
 const FROM_EMAIL = 'Ani\'s Artisan Bakery <pedidos@anisartisanbakery.com>'
 const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
+const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'ailinglez89@gmail.com'
+const ADMIN_URL = 'https://anisartisanbakery.com/admin'
 
 // Reused across warm Lambda invocations instead of re-instantiated per request.
 let stripeClient: Stripe | undefined
@@ -38,6 +40,7 @@ async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | 
     bodyHtml: textToHtmlParagraphs(bodyText),
     ctaLabel: isEn ? 'View invoice' : 'Ver factura',
     ctaUrl: invoice.hosted_invoice_url,
+    isEn,
   })
 
   const { data, error } = await getResend().emails.send({
@@ -75,6 +78,7 @@ async function emailRefundNotice(email: string | null | undefined, isEn: boolean
   const html = renderBrandedEmail({
     heading,
     bodyHtml: textToHtmlParagraphs(lines.join('\n')),
+    isEn,
   })
 
   const { data, error } = await getResend().emails.send({
@@ -85,6 +89,47 @@ async function emailRefundNotice(email: string | null | undefined, isEn: boolean
   })
   if (error) return `resend error: ${JSON.stringify(error)}`
   return `sent to ${email} (resend id: ${data?.id})`
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] as string)
+}
+
+async function emailOwnerNewOrder(params: {
+  customerName: string
+  items: { description: string; quantity: number }[]
+  total: number
+  date: string
+  deliveryMethod: string
+  notes: string
+}) {
+  if (!process.env.RESEND_API_KEY) return 'skipped: missing RESEND_API_KEY'
+
+  const customerName = escapeHtml(params.customerName || 'Sin nombre')
+  const itemsHtml = params.items.map(i => escapeHtml(`${i.quantity}x ${i.description}`)).join('<br/>')
+  const bodyHtml = `
+    <p style="margin:0 0 8px;"><strong>Cliente:</strong> ${customerName}</p>
+    <p style="margin:0 0 8px;"><strong>Productos:</strong><br/>${itemsHtml}</p>
+    <p style="margin:0 0 8px;"><strong>Total pagado:</strong> $${params.total.toFixed(2)}</p>
+    <p style="margin:0 0 8px;"><strong>Fecha de entrega:</strong> ${escapeHtml(params.date || '—')}</p>
+    <p style="margin:0 0 8px;"><strong>Método:</strong> ${params.deliveryMethod === 'delivery' ? 'Envío' : 'Retiro en tienda'}</p>
+    ${params.notes ? `<p style="margin:0 0 8px;"><strong>Notas:</strong> ${escapeHtml(params.notes)}</p>` : ''}
+  `
+  const html = renderBrandedEmail({
+    heading: 'Nuevo pedido pagado 🎉',
+    bodyHtml,
+    ctaLabel: 'Ver en el panel →',
+    ctaUrl: ADMIN_URL,
+  })
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to: NOTIFY_EMAIL,
+    subject: `Nuevo pedido de ${params.customerName || 'un cliente'} — $${params.total.toFixed(2)}`,
+    html,
+  })
+  if (error) return `resend error: ${JSON.stringify(error)}`
+  return `sent to ${NOTIFY_EMAIL} (resend id: ${data?.id})`
 }
 
 function formatAddress(address: Stripe.Address | null | undefined) {
@@ -145,13 +190,22 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
     language: metadata.language === 'en' ? 'en' : 'es',
   })))
 
+  const ownerEmailStatus = await emailOwnerNewOrder({
+    customerName: customerDetails?.name || shippingDetails?.name || '',
+    items: lineItems.map(item => ({ description: item.description || '', quantity: item.quantity || 1 })),
+    total: (fullSession.amount_total ?? 0) / 100,
+    date: metadata.date || '',
+    deliveryMethod: metadata.deliveryMethod || 'pickup',
+    notes: metadata.notes || '',
+  })
+
   const invoiceId = typeof fullSession.invoice === 'string' ? fullSession.invoice : fullSession.invoice?.id
-  if (!invoiceId) return 'sale recorded — no invoice id on session'
+  if (!invoiceId) return `sale recorded — owner email: ${ownerEmailStatus} — no invoice id on session`
 
   try {
     const invoice = await stripe.invoices.retrieve(invoiceId)
     const emailStatus = await emailInvoiceLink(invoice, customerDetails?.email, metadata.language === 'en', metadata.deliveryMethod || 'pickup')
-    return `sale recorded — invoice email: ${emailStatus}`
+    return `sale recorded — owner email: ${ownerEmailStatus} — invoice email: ${emailStatus}`
   } catch (err) {
     console.error('stripe-webhook: failed to email invoice:', err)
     return `sale recorded — invoice email threw: ${err instanceof Error ? err.message : String(err)}`

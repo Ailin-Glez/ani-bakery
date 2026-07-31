@@ -28,7 +28,7 @@ async function emailInvoiceLink(invoice: Stripe.Invoice, email: string | null | 
   const heading = isEn ? 'Here\'s your receipt' : 'Aquí está tu factura'
   const thankYouText = isEn
     ? `Thank you for your order! You can view or download your invoice using the button below.`
-    : `¡Gracias por tu pedido! Podés ver o descargar tu factura con el botón de abajo.`
+    : `¡Gracias por tu pedido! Puedes ver o descargar tu factura con el botón de abajo.`
   const pickupText = isEn
     ? `\n\nPickup address: ${PICKUP_ADDRESS}`
     : `\n\nDirección de retiro: ${PICKUP_ADDRESS}`

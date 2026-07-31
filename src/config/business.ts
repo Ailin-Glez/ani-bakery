@@ -312,7 +312,7 @@ export function buildThankYouMessage(form: ThankYouData, isEn: boolean) {
     : [
         `¡Hola ${form.name}! Muchas gracias por tu compra 🥰`,
         '',
-        `¡Espero que lo disfrutes mucho! Si tenés un minuto, me ayudaría un montón que dejaras una reseña, o que recomendaras Ani's Artisan Bakery a algún amigo.`,
+        `¡Espero que lo disfrutes mucho! Si tienes un minuto, me ayudaría un montón que dejes una reseña, o que recomiendes Ani's Artisan Bakery a algún amigo.`,
         '',
         `*Sitio web:* https://anisartisanbakery.com/#resenas`,
         `*WhatsApp:* ${business.phone.display}`,

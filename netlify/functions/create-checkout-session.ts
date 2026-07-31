@@ -114,38 +114,57 @@ export const handler: Handler = async event => {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'ORDER_BREAD_LIMIT_EXCEEDED' }) }
     }
 
-    // Shared helper: sums how much of a category was already sold for this date
-    // (excluding cancelled sales), matching by product name since sales don't store a category.
-    const getAlreadySoldForCategory = async (category: string) => {
-      const categoryProductsSnap = await db.collection('products').where('category', '==', category).get()
-      const categoryNames = new Set<string>()
-      categoryProductsSnap.docs.forEach(d => {
-        const p = d.data() as ProductDoc
-        categoryNames.add(p.name)
-        if (p.nameEn) categoryNames.add(p.nameEn)
+    const categoriesToCheck = [
+      ...(requestedBreadQuantity > 0 ? [BREAD_CATEGORY] : []),
+      ...(requestedCookieQuantity > 0 ? [COOKIE_CATEGORY] : []),
+    ]
+
+    if (categoriesToCheck.length > 0) {
+      // The per-category product lookups and the day's sales are independent of each
+      // other, and (when the order mixes bread and cookies) so are the two category
+      // lookups — fetch everything needed for the daily-cap checks in one round trip
+      // instead of a sequential query per category.
+      const [categoryProductSnaps, salesForDateSnap] = await Promise.all([
+        Promise.all(categoriesToCheck.map(category => db.collection('products').where('category', '==', category).get())),
+        db.collection('sales').where('date', '==', date).get(),
+      ])
+
+      const namesByCategory = new Map<string, Set<string>>()
+      categoriesToCheck.forEach((category, i) => {
+        const names = new Set<string>()
+        categoryProductSnaps[i].docs.forEach(d => {
+          const p = d.data() as ProductDoc
+          names.add(p.name)
+          if (p.nameEn) names.add(p.nameEn)
+        })
+        namesByCategory.set(category, names)
       })
 
-      const salesForDateSnap = await db.collection('sales').where('date', '==', date).get()
-      return salesForDateSnap.docs.reduce((sum, d) => {
-        const sale = d.data() as { productName: string; quantity: number; status: string }
-        if (sale.status === 'cancelled' || !categoryNames.has(sale.productName)) return sum
-        return sum + (sale.quantity || 0)
-      }, 0)
-    }
-
-    if (requestedBreadQuantity > 0) {
-      const alreadySoldBread = await getAlreadySoldForCategory(BREAD_CATEGORY)
-      if (alreadySoldBread + requestedBreadQuantity > MAX_BREAD_PER_DAY) {
-        const remaining = Math.max(0, MAX_BREAD_PER_DAY - alreadySoldBread)
-        return { statusCode: 400, body: JSON.stringify({ success: false, error: 'DAILY_BREAD_LIMIT_EXCEEDED', remaining }) }
+      // Sums how much of a category was already sold for this date (excluding
+      // cancelled sales), matching by product name since sales don't store a category.
+      const getAlreadySoldForCategory = (category: string) => {
+        const names = namesByCategory.get(category)!
+        return salesForDateSnap.docs.reduce((sum, d) => {
+          const sale = d.data() as { productName: string; quantity: number; status: string }
+          if (sale.status === 'cancelled' || !names.has(sale.productName)) return sum
+          return sum + (sale.quantity || 0)
+        }, 0)
       }
-    }
 
-    if (requestedCookieQuantity > 0) {
-      const alreadySoldCookies = await getAlreadySoldForCategory(COOKIE_CATEGORY)
-      if (alreadySoldCookies + requestedCookieQuantity > MAX_COOKIES_PER_DAY) {
-        const remaining = Math.max(0, MAX_COOKIES_PER_DAY - alreadySoldCookies)
-        return { statusCode: 400, body: JSON.stringify({ success: false, error: 'DAILY_COOKIE_LIMIT_EXCEEDED', remaining }) }
+      if (requestedBreadQuantity > 0) {
+        const alreadySoldBread = getAlreadySoldForCategory(BREAD_CATEGORY)
+        if (alreadySoldBread + requestedBreadQuantity > MAX_BREAD_PER_DAY) {
+          const remaining = Math.max(0, MAX_BREAD_PER_DAY - alreadySoldBread)
+          return { statusCode: 400, body: JSON.stringify({ success: false, error: 'DAILY_BREAD_LIMIT_EXCEEDED', remaining }) }
+        }
+      }
+
+      if (requestedCookieQuantity > 0) {
+        const alreadySoldCookies = getAlreadySoldForCategory(COOKIE_CATEGORY)
+        if (alreadySoldCookies + requestedCookieQuantity > MAX_COOKIES_PER_DAY) {
+          const remaining = Math.max(0, MAX_COOKIES_PER_DAY - alreadySoldCookies)
+          return { statusCode: 400, body: JSON.stringify({ success: false, error: 'DAILY_COOKIE_LIMIT_EXCEEDED', remaining }) }
+        }
       }
     }
 

@@ -10,6 +10,7 @@ export default function Hero({ onOrderClick }: { onOrderClick: () => void }) {
         <img
           src={business.logo}
           alt={business.name}
+          fetchPriority="high"
           className="w-56 h-56 md:w-72 md:h-72 rounded-full object-cover shadow-2xl border-4 border-rose"
         />
 

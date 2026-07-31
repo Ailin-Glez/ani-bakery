@@ -849,7 +849,7 @@ export default function Admin() {
                 {products.map(product => (
                   <div key={product.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex gap-4 items-center shadow-sm">
                     {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-20 h-20 object-cover rounded-xl flex-shrink-0 border border-rose" />
+                      <img src={product.image} alt={product.name} loading="lazy" className="w-20 h-20 object-cover rounded-xl flex-shrink-0 border border-rose" />
                     ) : (
                       <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-rose-light border border-rose flex items-center justify-center text-2xl">🍞</div>
                     )}
@@ -1287,7 +1287,7 @@ export default function Admin() {
                   <div key={review.id} className="bg-cream-light rounded-2xl border-2 border-rose shadow-sm overflow-hidden">
                     {/* Photo full-width if present */}
                     {review.image && (
-                      <img src={review.image} alt="review" className="w-full max-h-72 object-cover border-b border-rose" />
+                      <img src={review.image} alt="review" loading="lazy" className="w-full max-h-72 object-cover border-b border-rose" />
                     )}
                     <div className="p-6">
                       <div className="flex items-start justify-between gap-4 mb-2">
@@ -1325,7 +1325,7 @@ export default function Admin() {
                   <div key={review.id} className="bg-cream-light rounded-2xl border border-rose shadow-sm overflow-hidden">
                     <div className="flex gap-4 items-start p-6">
                       {review.image && (
-                        <img src={review.image} alt="review" className="w-24 h-24 object-cover rounded-xl border border-rose flex-shrink-0" />
+                        <img src={review.image} alt="review" loading="lazy" className="w-24 h-24 object-cover rounded-xl border border-rose flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1 gap-2">

@@ -59,12 +59,14 @@ export default function ProductCard({ product, onOrderClick }: Props) {
           src={product.image || '/bread.webp'}
           alt=""
           aria-hidden="true"
+          loading="lazy"
           onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-40"
         />
         <img
           src={product.image || '/bread.webp'}
           alt={name}
+          loading="lazy"
           onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="relative w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 ease-out"
         />

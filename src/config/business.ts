@@ -109,28 +109,46 @@ export const LATE_ORDER_CUTOFF_HOUR = 20
 // the self-service form, since special-event orders that far out need custom handling.
 export const MAX_ORDER_LEAD_DAYS = 30
 
-function toDateInputValue(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+// All lead-time math is anchored to the bakery's own timezone instead of the calling
+// runtime's local clock. Without this, a customer's browser (their local timezone)
+// and the Netlify Function that re-validates the order (which runs in UTC) can land
+// on different calendar days/hours for "now" and disagree on the minimum order date —
+// rejecting a date the customer was shown as valid.
+const BUSINESS_TIMEZONE = 'America/New_York'
+
+function getBusinessDateParts(now: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23',
+  }).formatToParts(now)
+  const get = (type: string) => Number(parts.find(p => p.type === type)?.value)
+  return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour') }
+}
+
+// Adds `days` to the bakery's current calendar date and formats it as YYYY-MM-DD.
+// Built on Date.UTC/getUTC* so the arithmetic itself never touches a local timezone.
+function addBusinessDays(now: Date, days: number) {
+  const { year, month, day } = getBusinessDateParts(now)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  date.setUTCDate(date.getUTCDate() + days)
+  const y = date.getUTCFullYear()
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(date.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 export function getOrderLeadDays(hasCookies: boolean, now: Date = new Date()) {
   const baseDays = hasCookies ? ORDER_MIN_LEAD_DAYS_WITH_COOKIES : ORDER_MIN_LEAD_DAYS
-  return baseDays + (now.getHours() >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0)
+  const { hour } = getBusinessDateParts(now)
+  return baseDays + (hour >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0)
 }
 
 export function getMinOrderDate(hasCookies: boolean, now: Date = new Date()) {
-  const date = new Date(now)
-  date.setDate(date.getDate() + getOrderLeadDays(hasCookies, now))
-  return toDateInputValue(date)
+  return addBusinessDays(now, getOrderLeadDays(hasCookies, now))
 }
 
 export function getMaxOrderDate(now: Date = new Date()) {
-  const date = new Date(now)
-  date.setDate(date.getDate() + MAX_ORDER_LEAD_DAYS)
-  return toDateInputValue(date)
+  return addBusinessDays(now, MAX_ORDER_LEAD_DAYS)
 }
 
 export function isOrderDateValid(dateStr: string, hasCookies: boolean, now: Date = new Date()) {

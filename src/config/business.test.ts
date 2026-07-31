@@ -21,10 +21,15 @@ import {
   LATE_ORDER_CUTOFF_HOUR,
 } from './business'
 
-// Wednesday 2026-07-29, well before and at/after the 8pm cutoff.
-const BEFORE_CUTOFF = new Date(2026, 6, 29, 10, 0, 0)
-const AT_CUTOFF = new Date(2026, 6, 29, 20, 0, 0)
-const AFTER_CUTOFF = new Date(2026, 6, 29, 23, 30, 0)
+// Wednesday 2026-07-29, well before and at/after the 8pm cutoff — expressed as fixed
+// UTC instants for that exact wall-clock time in the bakery's timezone (America/New_York,
+// UTC-4 during EDT), so the tests give the same result no matter what timezone the
+// machine running them is in. This mirrors the real bug this file guards against: a
+// customer's browser and the Netlify Function that re-validates the order run in
+// different local timezones, so the lead-time math must not depend on either one.
+const BEFORE_CUTOFF = new Date(Date.UTC(2026, 6, 29, 14, 0, 0)) // 10:00 EDT
+const AT_CUTOFF = new Date(Date.UTC(2026, 6, 30, 0, 0, 0)) // 20:00 EDT
+const AFTER_CUTOFF = new Date(Date.UTC(2026, 6, 30, 3, 30, 0)) // 23:30 EDT
 
 describe('getOrderLeadDays', () => {
   it('returns the standard lead time before the cutoff hour', () => {
@@ -47,12 +52,18 @@ describe('getOrderLeadDays', () => {
 })
 
 describe('getMinOrderDate', () => {
-  it('defaults to the current time when no date is passed', () => {
-    const expected = new Date()
-    expected.setDate(expected.getDate() + ORDER_MIN_LEAD_DAYS + (expected.getHours() >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0))
-    const yyyy = expected.getFullYear()
-    const mm = String(expected.getMonth() + 1).padStart(2, '0')
-    const dd = String(expected.getDate()).padStart(2, '0')
+  it('defaults to the current time when no date is passed, computed in the business timezone', () => {
+    const now = new Date()
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23',
+    }).formatToParts(now)
+    const get = (type: string) => Number(parts.find(p => p.type === type)?.value)
+    const leadDays = ORDER_MIN_LEAD_DAYS + (get('hour') >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0)
+    const expected = new Date(Date.UTC(get('year'), get('month') - 1, get('day')))
+    expected.setUTCDate(expected.getUTCDate() + leadDays)
+    const yyyy = expected.getUTCFullYear()
+    const mm = String(expected.getUTCMonth() + 1).padStart(2, '0')
+    const dd = String(expected.getUTCDate()).padStart(2, '0')
     expect(getMinOrderDate(false)).toBe(`${yyyy}-${mm}-${dd}`)
   })
 

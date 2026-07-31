@@ -1,7 +1,7 @@
 import type { Handler } from '@netlify/functions'
 import Stripe from 'stripe'
 import { getAdminDb } from './lib/firebaseAdmin'
-import { getDeliveryFee, getCardProcessingFee } from '../../src/config/business'
+import { getDeliveryFee, getTax, isOrderDateValid, BREAD_CATEGORY, MAX_BREAD_PER_ORDER, MAX_BREAD_PER_DAY, COOKIE_CATEGORY, MAX_COOKIES_PER_DAY } from '../../src/config/business'
 
 interface RequestItem {
   productId: string
@@ -15,6 +15,7 @@ interface ProductDoc {
   price: number
   available: boolean
   maxQuantity?: number
+  category?: string
 }
 
 const PICKUP_ADDRESS = '149 Carshalton Dr, Lyman, SC 29365'
@@ -68,11 +69,21 @@ export const handler: Handler = async event => {
       return { statusCode: 400, body: 'All items must reference a catalog product' }
     }
 
+    const date = metadata?.date || ''
+
     const productIds = [...new Set(items.map(i => i.productId))]
     const productDocs = await Promise.all(productIds.map(id => db.collection('products').doc(id).get()))
     const productsById = new Map(productDocs.filter(d => d.exists).map(d => [d.id, d.data() as ProductDoc]))
 
+    // Cookies (alone or mixed with bread) need more lead time than a bread-only order.
+    const hasCookies = items.some(item => productsById.get(item.productId)?.category === COOKIE_CATEGORY)
+    if (!isOrderDateValid(date, hasCookies)) {
+      return { statusCode: 400, body: 'Invalid order date' }
+    }
+
     let subtotal = 0
+    let requestedBreadQuantity = 0
+    let requestedCookieQuantity = 0
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = []
 
     for (const item of items) {
@@ -85,6 +96,8 @@ export const handler: Handler = async event => {
         return { statusCode: 400, body: 'Invalid or unavailable product' }
       }
       const quantity = product.maxQuantity != null ? Math.min(requestedQuantity, product.maxQuantity) : requestedQuantity
+      if (product.category === BREAD_CATEGORY) requestedBreadQuantity += quantity
+      if (product.category === COOKIE_CATEGORY) requestedCookieQuantity += quantity
       const name = isEn && product.nameEn ? product.nameEn : product.name
       subtotal += product.price * quantity
       lineItems.push({
@@ -95,6 +108,45 @@ export const handler: Handler = async event => {
           product_data: { name, metadata: { kind: 'product' } },
         },
       })
+    }
+
+    if (requestedBreadQuantity > MAX_BREAD_PER_ORDER) {
+      return { statusCode: 400, body: JSON.stringify({ success: false, error: 'ORDER_BREAD_LIMIT_EXCEEDED' }) }
+    }
+
+    // Shared helper: sums how much of a category was already sold for this date
+    // (excluding cancelled sales), matching by product name since sales don't store a category.
+    const getAlreadySoldForCategory = async (category: string) => {
+      const categoryProductsSnap = await db.collection('products').where('category', '==', category).get()
+      const categoryNames = new Set<string>()
+      categoryProductsSnap.docs.forEach(d => {
+        const p = d.data() as ProductDoc
+        categoryNames.add(p.name)
+        if (p.nameEn) categoryNames.add(p.nameEn)
+      })
+
+      const salesForDateSnap = await db.collection('sales').where('date', '==', date).get()
+      return salesForDateSnap.docs.reduce((sum, d) => {
+        const sale = d.data() as { productName: string; quantity: number; status: string }
+        if (sale.status === 'cancelled' || !categoryNames.has(sale.productName)) return sum
+        return sum + (sale.quantity || 0)
+      }, 0)
+    }
+
+    if (requestedBreadQuantity > 0) {
+      const alreadySoldBread = await getAlreadySoldForCategory(BREAD_CATEGORY)
+      if (alreadySoldBread + requestedBreadQuantity > MAX_BREAD_PER_DAY) {
+        const remaining = Math.max(0, MAX_BREAD_PER_DAY - alreadySoldBread)
+        return { statusCode: 400, body: JSON.stringify({ success: false, error: 'DAILY_BREAD_LIMIT_EXCEEDED', remaining }) }
+      }
+    }
+
+    if (requestedCookieQuantity > 0) {
+      const alreadySoldCookies = await getAlreadySoldForCategory(COOKIE_CATEGORY)
+      if (alreadySoldCookies + requestedCookieQuantity > MAX_COOKIES_PER_DAY) {
+        const remaining = Math.max(0, MAX_COOKIES_PER_DAY - alreadySoldCookies)
+        return { statusCode: 400, body: JSON.stringify({ success: false, error: 'DAILY_COOKIE_LIMIT_EXCEEDED', remaining }) }
+      }
     }
 
     const deliveryMethod = metadata?.deliveryMethod === 'delivery' ? 'delivery' : 'pickup'
@@ -111,16 +163,14 @@ export const handler: Handler = async event => {
       })
     }
 
-    // Card network rules prohibit surcharging debit/prepaid cards, so this only
-    // applies when the customer told us they're paying with credit.
-    const processingFee = metadata?.applyProcessingFee === 'true' ? getCardProcessingFee(subtotal) : 0
-    if (processingFee > 0) {
+    const tax = getTax(subtotal)
+    if (tax > 0) {
       lineItems.push({
         quantity: 1,
         price_data: {
           currency: 'usd',
-          unit_amount: Math.round(processingFee * 100),
-          product_data: { name: isEn ? 'Card processing fee' : 'Cargo por procesamiento de pago', metadata: { kind: 'fee' } },
+          unit_amount: Math.round(tax * 100),
+          product_data: { name: isEn ? 'Tax' : 'Impuestos', metadata: { kind: 'fee' } },
         },
       })
     }

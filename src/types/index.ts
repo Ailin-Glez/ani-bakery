@@ -50,7 +50,7 @@ export interface Sale {
   date: string
   notes: string
   deliveryFee?: number
-  processingFee?: number
+  tax?: number
   shippingAddress?: string
   deliveryMethod?: DeliveryMethod
   stripePaymentIntentId?: string

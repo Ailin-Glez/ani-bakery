@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2 } from 'lucide-react'
+import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2, MessageCircle, Calendar } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
-import { business, createCheckoutSession, isOrderDateValid, getMinOrderDate, getOrderLeadDays, getBlockedRange, getDeliveryFee, getCardProcessingFee, DELIVERY_FEE, SURCHARGE_CAP_PERCENT } from '../config/business'
+import {
+  business, createCheckoutSession, getMinOrderDate, getMaxOrderDate, getOrderLeadDays,
+  getBlockedRange, getDeliveryFee, getTax, buildWhatsAppOrderLink, openWhatsAppLink,
+  DELIVERY_FEE, TAX_PERCENT, BREAD_CATEGORY, MAX_BREAD_PER_ORDER, COOKIE_CATEGORY,
+} from '../config/business'
+import DatePicker from './DatePicker'
 import type { DeliveryMethod } from '../types'
 
 interface CartItem {
@@ -13,6 +18,7 @@ interface CartItem {
   quantity: number
   unitPrice: number
   maxQuantity?: number
+  category: string
 }
 
 interface DetailsForm {
@@ -59,14 +65,16 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const [details, setDetails] = useState<DetailsForm>(EMPTY_DETAILS)
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod | ''>('')
   const [deliveryMethodError, setDeliveryMethodError] = useState(false)
-  const [cardType, setCardType] = useState<'credit' | 'debit' | ''>('')
-  const [cardTypeError, setCardTypeError] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(false)
-  const dateInputRef = useRef<HTMLInputElement>(null)
+  const [checkoutErrorMessage, setCheckoutErrorMessage] = useState('')
+  const [dateError, setDateError] = useState('')
+  const [showCalendar, setShowCalendar] = useState(false)
 
   const isEn = i18n.language === 'en'
   const availableProducts = products.filter(p => p.available)
+  const breadQuantityInCart = cart.filter(item => item.category === BREAD_CATEGORY).reduce((sum, item) => sum + item.quantity, 0)
+  const hasCookies = cart.some(item => item.category === COOKIE_CATEGORY)
 
   useEffect(() => {
     if (open && initialProduct) {
@@ -79,25 +87,30 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
         quantity: 1,
         unitPrice: matched.price,
         maxQuantity: matched.maxQuantity,
+        category: matched.category,
       }])
       setStep('product')
     }
   }, [open, initialProduct, products])
 
-  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setCardType(''); setCardTypeError(false); setStep('product'); setSending(false); setSendError(false) }
+  const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setStep('product'); setSending(false); setSendError(false); setCheckoutErrorMessage(''); setDateError(''); setShowCalendar(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
-  const addToCart = (p: { id: string; name: string; nameEn?: string; price: number; maxQuantity?: number }) => {
+  // The bread cap is shared across every bread item in the cart, so adding one more
+  // unit of any bread product is blocked once the combined bread quantity hits the cap.
+  const addToCart = (p: { id: string; name: string; nameEn?: string; price: number; maxQuantity?: number; category: string }) => {
     setCart(prev => {
       const idx = prev.findIndex(item => item.product === p.name)
       if (idx >= 0) {
         const current = prev[idx]
         if (current.maxQuantity != null && current.quantity >= current.maxQuantity) return prev
+        if (current.category === BREAD_CATEGORY && breadQuantityInCart >= MAX_BREAD_PER_ORDER) return prev
         const next = [...prev]
         next[idx] = { ...current, quantity: current.quantity + 1 }
         return next
       }
-      return [...prev, { productId: p.id, product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price, maxQuantity: p.maxQuantity }]
+      if (p.category === BREAD_CATEGORY && breadQuantityInCart >= MAX_BREAD_PER_ORDER) return prev
+      return [...prev, { productId: p.id, product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price, maxQuantity: p.maxQuantity, category: p.category }]
     })
   }
 
@@ -105,6 +118,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
     setCart(prev => prev
       .map(item => {
         if (item.product !== product) return item
+        if (delta > 0 && item.category === BREAD_CATEGORY && breadQuantityInCart >= MAX_BREAD_PER_ORDER) return item
         const quantity = item.maxQuantity != null ? Math.min(item.quantity + delta, item.maxQuantity) : item.quantity + delta
         return { ...item, quantity }
       })
@@ -117,18 +131,36 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
   const getDateValidityMessage = (value: string) => {
     if (!value) return ''
-    if (!isOrderDateValid(value)) return t('orders.dateError', { days: getOrderLeadDays(), date: getMinOrderDate() })
+    const minDate = getMinOrderDate(hasCookies)
+    if (value < minDate) return t('orders.dateError', { days: getOrderLeadDays(hasCookies), date: minDate })
+    if (value > getMaxOrderDate()) return t('orders.dateMaxError')
     const blocked = getBlockedRange(value, outOfOfficeRanges)
     if (blocked) return `${t('orders.dateBlockedPrefix')} ${blocked.reason}`
     return ''
   }
 
+  const handleDateChange = (value: string) => {
+    setDetails(prev => ({ ...prev, date: value }))
+    const message = getDateValidityMessage(value)
+    setDateError(message)
+    // Collapse back to the compact view once a valid day is picked, same as a native
+    // date input closing on selection — keeps the rest of the step in view.
+    if (!message) setShowCalendar(false)
+  }
+
+  // Adding/removing cookies changes the required lead time, so a date picked earlier
+  // can become invalid — re-check it instead of silently keeping a stale selection.
+  useEffect(() => {
+    if (details.date) setDateError(getDateValidityMessage(details.date))
+  }, [hasCookies])
+
+  const formatDisplayDate = (value: string) => {
+    const [year, month, day] = value.split('-').map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString(isEn ? 'en-US' : 'es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
   const handleDetailsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    if (name === 'date') {
-      dateInputRef.current?.setCustomValidity(getDateValidityMessage(value))
-      e.target.reportValidity()
-    }
     setDetails(prev => ({ ...prev, [name]: value }))
   }
 
@@ -137,14 +169,10 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
       setDeliveryMethodError(true)
       return
     }
-    if (!cardType) {
-      setCardTypeError(true)
-      return
-    }
     const dateMessage = getDateValidityMessage(details.date)
-    if (dateMessage) {
-      dateInputRef.current?.setCustomValidity(dateMessage)
-      dateInputRef.current?.reportValidity()
+    if (dateMessage || !details.date) {
+      setDateError(dateMessage || t('orders.dateError', { days: getOrderLeadDays(hasCookies), date: getMinOrderDate(hasCookies) }))
+      setShowCalendar(true)
       return
     }
     setStep('confirm')
@@ -153,9 +181,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const deliveryFee = getDeliveryFee(deliveryMethod || 'pickup')
   const orderTotal = cartTotal + deliveryFee
-  // Card networks prohibit surcharging debit/prepaid cards, so the processing fee only applies to credit.
-  const processingFee = cardType === 'credit' ? getCardProcessingFee(orderTotal) : 0
-  const grandTotal = orderTotal + processingFee
+  const tax = getTax(orderTotal)
+  const grandTotal = orderTotal + tax
 
   const today = new Date().toISOString().slice(0, 10)
   const upcomingOutOfOffice = outOfOfficeRanges.filter(r => r.endDate >= today).slice(0, 2)
@@ -163,25 +190,35 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const submitOrder = async () => {
     setSending(true)
     setSendError(false)
+    setCheckoutErrorMessage('')
     // Prices aren't sent here — the server looks up each product's real price and
-    // computes delivery/processing fees itself, so a tampered request can't pay less.
+    // computes delivery fee/tax itself, so a tampered request can't pay less.
     const items = cart.map(item => ({
       productId: item.productId,
       product: isEn && item.productEn ? item.productEn : item.product,
       quantity: item.quantity,
     }))
-    const url = await createCheckoutSession({
+    const result = await createCheckoutSession({
       items,
       successUrl: `${window.location.origin}/?checkout=success`,
       cancelUrl: `${window.location.origin}/?checkout=cancel`,
-      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es', deliveryMethod: deliveryMethod || 'pickup', applyProcessingFee: cardType === 'credit' ? 'true' : 'false' },
+      metadata: { date: details.date, notes: details.notes, language: isEn ? 'en' : 'es', deliveryMethod: deliveryMethod || 'pickup' },
     })
-    if (!url) {
+    if (!result.url) {
       setSending(false)
       setSendError(true)
+      if (result.error === 'DAILY_BREAD_LIMIT_EXCEEDED') {
+        setCheckoutErrorMessage(t('orders.breadLimitDaily', { remaining: Math.max(0, result.remaining ?? 0) }))
+      } else if (result.error === 'ORDER_BREAD_LIMIT_EXCEEDED') {
+        setCheckoutErrorMessage(t('orders.breadLimitPerOrder', { max: MAX_BREAD_PER_ORDER }))
+      } else if (result.error === 'DAILY_COOKIE_LIMIT_EXCEEDED') {
+        setCheckoutErrorMessage(t('orders.cookieLimitDaily', { remaining: Math.max(0, result.remaining ?? 0) }))
+      } else {
+        setCheckoutErrorMessage('')
+      }
       return
     }
-    window.location.href = url
+    window.location.href = result.url
   }
 
   const inputClass = 'w-full bg-cream border border-rose rounded-xl px-4 py-2.5 text-brown-dark placeholder-brown-mid/40 focus:outline-none focus:border-wine focus:ring-1 focus:ring-wine/30 transition-colors text-sm'
@@ -232,7 +269,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               <div className="flex flex-col gap-2 mt-2">
                 {availableProducts.map(p => {
                   const inCart = cart.find(item => item.product === p.name)
-                  const atMax = !!inCart && p.maxQuantity != null && inCart.quantity >= p.maxQuantity
+                  const atBreadLimit = p.category === BREAD_CATEGORY && breadQuantityInCart >= MAX_BREAD_PER_ORDER && !inCart
+                  const atMax = (!!inCart && p.maxQuantity != null && inCart.quantity >= p.maxQuantity) || atBreadLimit
                   return (
                     <button
                       key={p.id}
@@ -277,7 +315,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                         <span className="w-5 text-center font-bold">{item.quantity}</span>
                         <button
                           onClick={() => changeQuantity(item.product, 1)}
-                          disabled={item.maxQuantity != null && item.quantity >= item.maxQuantity}
+                          disabled={(item.maxQuantity != null && item.quantity >= item.maxQuantity) || (item.category === BREAD_CATEGORY && breadQuantityInCart >= MAX_BREAD_PER_ORDER)}
                           className="w-6 h-6 flex items-center justify-center rounded-full bg-brown-dark/10 hover:bg-brown-dark/20 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Plus size={12} />
@@ -288,6 +326,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                       </div>
                     </div>
                   ))}
+                  {breadQuantityInCart >= MAX_BREAD_PER_ORDER && (
+                    <p className="text-xs font-semibold text-burgundy">{t('orders.breadLimitPerOrder', { max: MAX_BREAD_PER_ORDER })}</p>
+                  )}
                 </div>
               )}
             </>
@@ -325,45 +366,51 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                   {deliveryMethodError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.deliveryMethodError')}</p>}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.cardTypeLabel')} *</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { setCardType('debit'); setCardTypeError(false) }}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
-                        cardType === 'debit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
-                      }`}
-                    >
-                      {t('orders.cardTypeDebit')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setCardType('credit'); setCardTypeError(false) }}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-xl border-2 transition-colors ${
-                        cardType === 'credit' ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream text-brown-mid'
-                      }`}
-                    >
-                      {t('orders.cardTypeCredit')}
-                    </button>
-                  </div>
-                  {cardTypeError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.cardTypeError')}</p>}
-                  <p className={`text-xs font-semibold text-burgundy mt-1 ${cardType === 'credit' ? '' : 'invisible'}`}>
-                    {t('orders.cardTypeNote', { percent: (SURCHARGE_CAP_PERCENT * 100).toFixed(0) })}
-                  </p>
-                </div>
-
                 <p className="text-xs text-brown-mid">{deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}</p>
 
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
-                  <input ref={dateInputRef} type="date" name="date" value={details.date} onChange={handleDetailsChange} required className={inputClass} />
-                  {upcomingOutOfOffice.length > 0 && (
-                    <div className="text-xs font-semibold text-burgundy mt-1.5">
-                      <p>{t('orders.upcomingOutOfOffice')}:</p>
-                      {upcomingOutOfOffice.map(range => (
-                        <p key={range.id} className="font-normal">{range.startDate} → {range.endDate} — {range.reason}</p>
-                      ))}
+                  <p className="text-xs text-brown-mid mb-1">{t('orders.leadTimeNote', { hours: hasCookies ? 72 : 48 })}</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(prev => !prev)}
+                    className={`${inputClass} flex items-center justify-between gap-2 text-left`}
+                  >
+                    <span className={`flex items-center gap-2 ${details.date ? 'text-brown-dark font-semibold' : 'text-brown-mid/40'}`}>
+                      <Calendar size={14} className="flex-shrink-0" />
+                      {details.date ? formatDisplayDate(details.date) : (isEn ? 'Select a date' : 'Selecciona una fecha')}
+                    </span>
+                    <ChevronRight size={14} className={`flex-shrink-0 text-brown-light transition-transform ${showCalendar ? 'rotate-90' : ''}`} />
+                  </button>
+                  {dateError && <p className="text-xs font-semibold text-burgundy mt-1.5">{dateError}</p>}
+                  {showCalendar && (
+                    <div className="mt-2">
+                      <DatePicker
+                        value={details.date}
+                        onChange={handleDateChange}
+                        minDate={getMinOrderDate(hasCookies)}
+                        maxDate={getMaxOrderDate()}
+                        blockedRanges={outOfOfficeRanges}
+                        isEn={isEn}
+                      />
+                      <p className="text-xs text-brown-mid mt-1.5">
+                        {t('orders.calendarNote')}{' '}
+                        <button
+                          type="button"
+                          onClick={() => openWhatsAppLink(buildWhatsAppOrderLink(isEn ? 'Hi Ani! I need a special order for an event further than 1 month out.' : '¡Hola Ani! Necesito un pedido especial para un evento con más de 1 mes de anticipación.'))}
+                          className="inline-flex items-center gap-1 font-semibold text-wine hover:text-wine-dark underline"
+                        >
+                          <MessageCircle size={12} /> {t('orders.calendarWriteWhatsApp')}
+                        </button>
+                      </p>
+                      {upcomingOutOfOffice.length > 0 && (
+                        <div className="text-xs font-semibold text-burgundy mt-1.5">
+                          <p>{t('orders.upcomingOutOfOffice')}:</p>
+                          {upcomingOutOfOffice.map(range => (
+                            <p key={range.id} className="font-normal">{range.startDate} → {range.endDate} — {range.reason}</p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -393,10 +440,10 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                       <span className="text-brown-mid flex-shrink-0">${deliveryFee.toFixed(2)}</span>
                     </div>
                   )}
-                  {processingFee > 0 && (
+                  {tax > 0 && (
                     <div className="flex justify-between gap-2">
-                      <span className="text-brown-dark">{t('orders.cardProcessingFee')}</span>
-                      <span className="text-brown-mid flex-shrink-0">${processingFee.toFixed(2)}</span>
+                      <span className="text-brown-dark">{t('orders.taxFee', { percent: (TAX_PERCENT * 100).toFixed(0) })}</span>
+                      <span className="text-brown-mid flex-shrink-0">${tax.toFixed(2)}</span>
                     </div>
                   )}
                   {grandTotal > 0 && (
@@ -428,7 +475,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
         {/* Footer nav */}
         <div className="bg-cream-light border-t border-rose px-4 py-3 flex flex-col gap-2 flex-shrink-0">
-          {sendError && <p className="text-xs font-semibold text-burgundy">{t('orders.stripeSendError')}</p>}
+          {sendError && <p className="text-xs font-semibold text-burgundy">{checkoutErrorMessage || t('orders.stripeSendError')}</p>}
           {step === 'confirm' && orderTotal <= 0 && (
             <p className="text-xs font-semibold text-burgundy">{t('orders.stripeMinTotalError')}</p>
           )}

@@ -109,7 +109,7 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   }
   const lineItems = allLineItems.filter(item => lineItemKind(item) === 'product')
   const deliveryFee = allLineItems.filter(item => lineItemKind(item) === 'shipping').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
-  const processingFee = allLineItems.filter(item => lineItemKind(item) === 'fee').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
+  const tax = allLineItems.filter(item => lineItemKind(item) === 'fee').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
   const customerDetails = fullSession.customer_details
   // As of newer Stripe API versions, shipping info moved from the (now-removed)
   // top-level `shipping_details` field to `collected_information.shipping_details`.
@@ -133,7 +133,7 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
     date: metadata.date || '',
     notes: metadata.notes || '',
     deliveryFee,
-    processingFee,
+    tax,
     shippingAddress,
     deliveryMethod: metadata.deliveryMethod === 'delivery' ? 'delivery' : 'pickup',
     status: 'in_progress',
@@ -167,7 +167,7 @@ async function handleChargeRefunded(stripe: Stripe, charge: Stripe.Charge) {
   const matches = await db.collection('sales').where('stripePaymentIntentId', '==', paymentIntentId).get()
   if (matches.empty) return 'skipped: no matching sale for this payment intent'
 
-  await Promise.all(matches.docs.map(doc => doc.ref.update({ status: 'cancelled', total: 0, unitPrice: 0, deliveryFee: 0, processingFee: 0 })))
+  await Promise.all(matches.docs.map(doc => doc.ref.update({ status: 'cancelled', total: 0, unitPrice: 0, deliveryFee: 0, tax: 0 })))
 
   const sale = matches.docs[0].data() as { email?: string; language?: string }
   const latestRefund = await stripe.refunds.list({ charge: charge.id, limit: 1 })

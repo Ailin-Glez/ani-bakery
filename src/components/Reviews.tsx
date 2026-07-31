@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Star, Camera, X, ZoomIn, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useReviews } from '../context/ReviewContext'
 import type { Review } from '../context/ReviewContext'
+import { sanitizeNameInput } from '../config/business'
 
 const DESKTOP_PAGE_SIZE = 6
 
@@ -290,7 +291,14 @@ export default function Reviews() {
 
               <div>
                 <label className="block text-sm font-semibold text-brown-dark mb-1">{t('reviews.formName')} *</label>
-                <input value={name} onChange={e => setName(e.target.value)} required placeholder={t('reviews.formNamePlaceholder')} className={inputClass} />
+                <input
+                  value={name}
+                  onChange={e => setName(sanitizeNameInput(e.target.value))}
+                  required
+                  placeholder={t('reviews.formNamePlaceholder')}
+                  title={t('reviews.formNameError')}
+                  className={inputClass}
+                />
               </div>
 
               <div>

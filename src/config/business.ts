@@ -23,21 +23,11 @@ export function getDeliveryFee(deliveryMethod: 'pickup' | 'delivery') {
   return deliveryMethod === 'delivery' ? DELIVERY_FEE : 0
 }
 
-// Stripe's standard US card rate. Grossing up by this formula means Stripe's fee
-// on the *surcharged* total still nets us exactly `subtotal` after they take their cut.
-export const STRIPE_FEE_PERCENT = 0.029
-export const STRIPE_FEE_FIXED = 0.3
+export const TAX_PERCENT = 0.06
 
-// Visa caps card surcharges at 3% regardless of actual processing cost — on small
-// orders the grossed-up formula above can exceed that, so we cap the result here.
-export const SURCHARGE_CAP_PERCENT = 0.03
-
-export function getCardProcessingFee(subtotal: number) {
+export function getTax(subtotal: number) {
   if (subtotal <= 0) return 0
-  const grossedUp = (subtotal + STRIPE_FEE_FIXED) / (1 - STRIPE_FEE_PERCENT)
-  const fee = grossedUp - subtotal
-  const cap = subtotal * SURCHARGE_CAP_PERCENT
-  return Math.round(Math.min(fee, cap) * 100) / 100
+  return Math.round(subtotal * TAX_PERCENT * 100) / 100
 }
 
 export function buildWhatsAppOrderLink(message: string) {
@@ -102,15 +92,22 @@ export async function createCheckoutSession(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
-  if (!response.ok) return null
-  const data = await response.json()
-  return data.url as string | undefined
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) return { url: undefined, error: data.error as string | undefined, remaining: data.remaining as number | undefined }
+  return { url: data.url as string | undefined, error: undefined, remaining: undefined }
 }
 
+// Bread-only orders need 48h of lead time; if the order includes cookies (alone or
+// mixed with bread) it needs 72h — cookies take longer to prep for pickup/delivery.
 export const ORDER_MIN_LEAD_DAYS = 2
+export const ORDER_MIN_LEAD_DAYS_WITH_COOKIES = 3
 // Orders placed at or after this hour (24h, local time) need one extra day of lead
 // time — there's no way to get same-evening prep started in time otherwise.
 export const LATE_ORDER_CUTOFF_HOUR = 20
+
+// Orders further out than this need to go through a direct conversation instead of
+// the self-service form, since special-event orders that far out need custom handling.
+export const MAX_ORDER_LEAD_DAYS = 30
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear()
@@ -119,18 +116,54 @@ function toDateInputValue(date: Date) {
   return `${year}-${month}-${day}`
 }
 
-export function getOrderLeadDays(now: Date = new Date()) {
-  return ORDER_MIN_LEAD_DAYS + (now.getHours() >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0)
+export function getOrderLeadDays(hasCookies: boolean, now: Date = new Date()) {
+  const baseDays = hasCookies ? ORDER_MIN_LEAD_DAYS_WITH_COOKIES : ORDER_MIN_LEAD_DAYS
+  return baseDays + (now.getHours() >= LATE_ORDER_CUTOFF_HOUR ? 1 : 0)
 }
 
-export function getMinOrderDate(now: Date = new Date()) {
+export function getMinOrderDate(hasCookies: boolean, now: Date = new Date()) {
   const date = new Date(now)
-  date.setDate(date.getDate() + getOrderLeadDays(now))
+  date.setDate(date.getDate() + getOrderLeadDays(hasCookies, now))
   return toDateInputValue(date)
 }
 
-export function isOrderDateValid(dateStr: string, now: Date = new Date()) {
-  return !!dateStr && dateStr >= getMinOrderDate(now)
+export function getMaxOrderDate(now: Date = new Date()) {
+  const date = new Date(now)
+  date.setDate(date.getDate() + MAX_ORDER_LEAD_DAYS)
+  return toDateInputValue(date)
+}
+
+export function isOrderDateValid(dateStr: string, hasCookies: boolean, now: Date = new Date()) {
+  return !!dateStr && dateStr >= getMinOrderDate(hasCookies, now) && dateStr <= getMaxOrderDate(now)
+}
+
+// Product categories are a fixed set (not free text) so business rules — like the
+// bread/cookie order/day caps below — can key off a known category value.
+export const CATEGORY_OPTIONS = [
+  { value: 'Pan', labelEn: 'Bread' },
+  { value: 'Galletas', labelEn: 'Cookies' },
+] as const
+
+export const BREAD_CATEGORY = 'Pan'
+export const MAX_BREAD_PER_ORDER = 20
+export const MAX_BREAD_PER_DAY = 36
+
+export const COOKIE_CATEGORY = 'Galletas'
+export const MAX_COOKIES_PER_DAY = 72
+
+// Customer-entered names: letters (incl. accents/ñ), spaces, hyphens and
+// apostrophes only — no digits or symbols.
+const NAME_CHAR_REGEX = /^[a-zA-ZÀ-ÿñÑ'\- ]*$/
+export const NAME_PATTERN = "[a-zA-ZÀ-ÿñÑ'\\- ]+"
+
+export function isValidCustomerName(name: string) {
+  return name.trim().length > 0 && NAME_CHAR_REGEX.test(name)
+}
+
+// Strips characters a customer name can't contain as the user types, so digits
+// and symbols never make it into the field instead of being caught only on submit.
+export function sanitizeNameInput(value: string) {
+  return value.replace(/[^a-zA-ZÀ-ÿñÑ'\- ]/g, '')
 }
 
 interface BlockedRange {

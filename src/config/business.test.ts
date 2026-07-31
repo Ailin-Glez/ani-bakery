@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   getMinOrderDate,
+  getMaxOrderDate,
   getOrderLeadDays,
   isOrderDateValid,
   buildOrderMessage,
@@ -8,11 +9,15 @@ import {
   openWhatsAppLink,
   isValidUSPhone,
   isValidEmail,
+  isValidCustomerName,
+  sanitizeNameInput,
   formatUSPhoneInput,
   getBlockedRange,
   getDeliveryFee,
+  getTax,
   DELIVERY_FEE,
   ORDER_MIN_LEAD_DAYS,
+  ORDER_MIN_LEAD_DAYS_WITH_COOKIES,
   LATE_ORDER_CUTOFF_HOUR,
 } from './business'
 
@@ -23,12 +28,21 @@ const AFTER_CUTOFF = new Date(2026, 6, 29, 23, 30, 0)
 
 describe('getOrderLeadDays', () => {
   it('returns the standard lead time before the cutoff hour', () => {
-    expect(getOrderLeadDays(BEFORE_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS)
+    expect(getOrderLeadDays(false, BEFORE_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS)
   })
 
   it('returns one extra day at/after the cutoff hour', () => {
-    expect(getOrderLeadDays(AT_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS + 1)
-    expect(getOrderLeadDays(AFTER_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS + 1)
+    expect(getOrderLeadDays(false, AT_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS + 1)
+    expect(getOrderLeadDays(false, AFTER_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS + 1)
+  })
+
+  it('returns the extended lead time when the order includes cookies', () => {
+    expect(getOrderLeadDays(true, BEFORE_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS_WITH_COOKIES)
+  })
+
+  it('adds one extra day to the cookie lead time at/after the cutoff hour', () => {
+    expect(getOrderLeadDays(true, AT_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS_WITH_COOKIES + 1)
+    expect(getOrderLeadDays(true, AFTER_CUTOFF)).toBe(ORDER_MIN_LEAD_DAYS_WITH_COOKIES + 1)
   })
 })
 
@@ -39,45 +53,96 @@ describe('getMinOrderDate', () => {
     const yyyy = expected.getFullYear()
     const mm = String(expected.getMonth() + 1).padStart(2, '0')
     const dd = String(expected.getDate()).padStart(2, '0')
-    expect(getMinOrderDate()).toBe(`${yyyy}-${mm}-${dd}`)
+    expect(getMinOrderDate(false)).toBe(`${yyyy}-${mm}-${dd}`)
   })
 
   it('adds the standard lead time for orders placed before the cutoff hour', () => {
-    expect(getMinOrderDate(BEFORE_CUTOFF)).toBe('2026-07-31')
+    expect(getMinOrderDate(false, BEFORE_CUTOFF)).toBe('2026-07-31')
   })
 
   it('adds one extra day for orders placed exactly at the cutoff hour', () => {
-    expect(getMinOrderDate(AT_CUTOFF)).toBe('2026-08-01')
+    expect(getMinOrderDate(false, AT_CUTOFF)).toBe('2026-08-01')
   })
 
   it('adds one extra day for orders placed after the cutoff hour', () => {
-    expect(getMinOrderDate(AFTER_CUTOFF)).toBe('2026-08-01')
+    expect(getMinOrderDate(false, AFTER_CUTOFF)).toBe('2026-08-01')
+  })
+
+  it('adds the extended lead time when the order includes cookies', () => {
+    expect(getMinOrderDate(true, BEFORE_CUTOFF)).toBe('2026-08-01')
   })
 })
 
 describe('isOrderDateValid', () => {
   it('rejects an empty date', () => {
-    expect(isOrderDateValid('')).toBe(false)
+    expect(isOrderDateValid('', false)).toBe(false)
   })
 
   it('rejects a date before the minimum lead time', () => {
-    expect(isOrderDateValid('2026-07-29', BEFORE_CUTOFF)).toBe(false)
+    expect(isOrderDateValid('2026-07-29', false, BEFORE_CUTOFF)).toBe(false)
   })
 
   it('accepts a date exactly at the minimum lead time before the cutoff hour', () => {
-    expect(isOrderDateValid('2026-07-31', BEFORE_CUTOFF)).toBe(true)
+    expect(isOrderDateValid('2026-07-31', false, BEFORE_CUTOFF)).toBe(true)
   })
 
   it('rejects the standard lead-time date when placed after the cutoff hour', () => {
-    expect(isOrderDateValid('2026-07-31', AFTER_CUTOFF)).toBe(false)
+    expect(isOrderDateValid('2026-07-31', false, AFTER_CUTOFF)).toBe(false)
   })
 
   it('accepts the extended lead-time date when placed after the cutoff hour', () => {
-    expect(isOrderDateValid('2026-08-01', AFTER_CUTOFF)).toBe(true)
+    expect(isOrderDateValid('2026-08-01', false, AFTER_CUTOFF)).toBe(true)
   })
 
-  it('accepts a date well in the future', () => {
-    expect(isOrderDateValid('2099-01-01')).toBe(true)
+  it('rejects the bread-only lead-time date when the order includes cookies', () => {
+    expect(isOrderDateValid('2026-07-31', true, BEFORE_CUTOFF)).toBe(false)
+  })
+
+  it('accepts the cookie lead-time date when the order includes cookies', () => {
+    expect(isOrderDateValid('2026-08-01', true, BEFORE_CUTOFF)).toBe(true)
+  })
+
+  it('accepts a date within the 1-month advance window', () => {
+    expect(isOrderDateValid('2026-08-20', false, BEFORE_CUTOFF)).toBe(true)
+  })
+
+  it('rejects a date more than 1 month in advance', () => {
+    expect(isOrderDateValid('2099-01-01', false, BEFORE_CUTOFF)).toBe(false)
+  })
+
+  it('accepts a date exactly at the maximum lead time', () => {
+    expect(isOrderDateValid(getMaxOrderDate(BEFORE_CUTOFF), false, BEFORE_CUTOFF)).toBe(true)
+  })
+
+  it('rejects a date one day past the maximum lead time', () => {
+    const dayAfterMax = new Date(2026, 7, 29)
+    const yyyy = dayAfterMax.getFullYear()
+    const mm = String(dayAfterMax.getMonth() + 1).padStart(2, '0')
+    const dd = String(dayAfterMax.getDate()).padStart(2, '0')
+    expect(isOrderDateValid(`${yyyy}-${mm}-${dd}`, false, BEFORE_CUTOFF)).toBe(false)
+  })
+})
+
+describe('isValidCustomerName', () => {
+  it('accepts names with letters, accents, spaces, hyphens and apostrophes', () => {
+    expect(isValidCustomerName('María García')).toBe(true)
+    expect(isValidCustomerName("Anne-Marie O'Connor")).toBe(true)
+  })
+
+  it('rejects empty or whitespace-only names', () => {
+    expect(isValidCustomerName('')).toBe(false)
+    expect(isValidCustomerName('   ')).toBe(false)
+  })
+
+  it('rejects names containing digits or symbols', () => {
+    expect(isValidCustomerName('Ana123')).toBe(false)
+    expect(isValidCustomerName('Ana@Garcia')).toBe(false)
+  })
+})
+
+describe('sanitizeNameInput', () => {
+  it('strips digits and symbols while typing', () => {
+    expect(sanitizeNameInput('Ana123 García!')).toBe('Ana García')
   })
 })
 
@@ -255,5 +320,17 @@ describe('getDeliveryFee', () => {
 
   it('charges nothing for pickup orders', () => {
     expect(getDeliveryFee('pickup')).toBe(0)
+  })
+})
+
+describe('getTax', () => {
+  it('charges nothing on a zero or negative subtotal', () => {
+    expect(getTax(0)).toBe(0)
+    expect(getTax(-10)).toBe(0)
+  })
+
+  it('charges a flat 6% of the subtotal', () => {
+    expect(getTax(100)).toBe(6)
+    expect(getTax(50)).toBe(3)
   })
 })

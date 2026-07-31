@@ -8,12 +8,12 @@ import { useOutOfOffice } from '../context/OutOfOfficeContext'
 import { exportSalesToExcel } from '../lib/exportSales'
 import { SALE_STATUSES, normalizeSaleStatus } from '../lib/saleStatus'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail, openWhatsAppLink } from '../config/business'
+import { business, buildWhatsAppLinkTo, buildPaymentConfirmationMessage, buildThankYouMessage, sendOrderEmail, openWhatsAppLink, sanitizeNameInput, isValidCustomerName, CATEGORY_OPTIONS } from '../config/business'
 import type { Product, Sale, SaleStatus, PaymentMethod, OutOfOfficeRange } from '../types'
-import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, CreditCard, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { PlusCircle, Pencil, Trash2, X, LogOut, Eye, EyeOff, Star, Check, Ban, ImagePlus, Loader2, Download, DollarSign, Receipt, CalendarDays, CheckCircle2, Send, Package, Phone, Mail, CreditCard, PlaneTakeoff, Plus, Minus, Filter, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
 
 const EMPTY_PRODUCT: Omit<Product, 'id'> = {
-  name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: '', categoryEn: '', available: true,
+  name: '', description: '', nameEn: '', descriptionEn: '', price: 0, image: '', category: CATEGORY_OPTIONS[0].value, categoryEn: CATEGORY_OPTIONS[0].labelEn, available: true,
 }
 
 interface SaleFormData {
@@ -150,10 +150,14 @@ export default function Admin() {
 
   const closeModal = () => { setEditing(null); setAdding(false); setFormData(EMPTY_PRODUCT) }
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
     if (type === 'checkbox') setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }))
     else if (name === 'maxQuantity') setFormData(prev => ({ ...prev, maxQuantity: value === '' ? undefined : Number(value) }))
+    else if (name === 'category') {
+      const categoryEn = CATEGORY_OPTIONS.find(opt => opt.value === value)?.labelEn ?? ''
+      setFormData(prev => ({ ...prev, category: value, categoryEn }))
+    }
     else setFormData(prev => ({ ...prev, [name]: name === 'price' ? Number(value) : value }))
   }
 
@@ -234,12 +238,16 @@ export default function Admin() {
 
   const handleSaleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
+    if (name === 'customerName') {
+      setSaleForm(prev => ({ ...prev, customerName: sanitizeNameInput(value) }))
+      return
+    }
     setSaleForm(prev => ({ ...prev, [name]: value }))
   }
 
   const handleSaleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (saleCart.length === 0) return
+    if (saleCart.length === 0 || !isValidCustomerName(saleForm.customerName)) return
     const orderId = crypto.randomUUID()
     await Promise.all(saleCart.map(item => addSale({
       orderId,
@@ -294,6 +302,27 @@ export default function Admin() {
       monthRevenue: nonCancelled.filter(s => s.date.startsWith(monthKey)).reduce((sum, s) => sum + s.total, 0),
     }
   }, [sales])
+
+  const categorySales = useMemo(() => {
+    const nameToCategory = new Map<string, string>()
+    products.forEach(p => {
+      nameToCategory.set(p.name, p.category)
+      if (p.nameEn) nameToCategory.set(p.nameEn, p.category)
+    })
+    const otherLabel = t('admin.categoryOther')
+    const totals = new Map<string, { revenue: number; quantity: number }>()
+    for (const s of sales) {
+      if (s.status === 'cancelled') continue
+      const category = nameToCategory.get(s.productName) || otherLabel
+      const entry = totals.get(category) || { revenue: 0, quantity: 0 }
+      entry.revenue += s.total
+      entry.quantity += s.quantity
+      totals.set(category, entry)
+    }
+    const known = CATEGORY_OPTIONS.map(opt => ({ category: opt.value, ...(totals.get(opt.value) || { revenue: 0, quantity: 0 }) }))
+    const other = totals.get(otherLabel)
+    return other ? [...known, { category: otherLabel, ...other }] : known
+  }, [sales, products, t])
 
   const statusLabelKey: Record<SaleStatus, string> = {
     pending_confirmation: 'salesStatusPendingConfirmation',
@@ -491,6 +520,17 @@ export default function Admin() {
       </div>
     )
   }
+
+  const renderWhatsAppButton = (phone: string | undefined, customerName: string) => phone && (
+    <button
+      type="button"
+      onClick={() => openWhatsAppLink(buildWhatsAppLinkTo(phone, `¡Hola ${customerName}! `))}
+      title={t('admin.whatsappContact')}
+      className="flex items-center gap-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 shadow-sm transition-colors px-2.5 py-1 rounded-full"
+    >
+      <MessageCircle size={13} /> {phone}
+    </button>
+  )
 
   const renderPaidBadge = (sale: Sale) => sale.paid && (
     <span className="flex items-center gap-1">
@@ -699,10 +739,6 @@ export default function Admin() {
                         <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldDescriptionEn')}</label>
                         <textarea name="descriptionEn" value={formData.descriptionEn ?? ''} onChange={handleFormChange} rows={3} className={`${inputClass} resize-none`} />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldCategoryEn')}</label>
-                        <input name="categoryEn" value={formData.categoryEn ?? ''} onChange={handleFormChange} placeholder={t('admin.fieldCategoryEnPlaceholder')} className={inputClass} />
-                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -712,7 +748,12 @@ export default function Admin() {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldCategory')} *</label>
-                        <input name="category" value={formData.category} onChange={handleFormChange} required placeholder={t('admin.fieldCategoryPlaceholder')} className={inputClass} />
+                        <select name="category" value={formData.category} onChange={handleFormChange} required className={inputClass}>
+                          <option value="" disabled>{t('admin.fieldCategorySelectPlaceholder')}</option>
+                          {CATEGORY_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.value}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -868,6 +909,22 @@ export default function Admin() {
               </div>
             </div>
 
+            <div className="mb-8">
+              <h3 className="text-sm font-bold text-brown-dark mb-3">{t('admin.salesByCategory')}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categorySales.map(c => (
+                  <div key={c.category} className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
+                    <div className="border border-rose text-wine rounded-xl p-2.5"><Package size={20} /></div>
+                    <div>
+                      <p className="text-xs text-brown-mid">{c.category}</p>
+                      <p className="text-xl font-bold text-brown-dark">${c.revenue.toFixed(2)}</p>
+                      <p className="text-xs text-brown-mid">{c.quantity} {t('admin.unitsSold')}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div className="flex gap-3 flex-wrap items-center">
                 <div className="flex items-center gap-2 bg-cream-light border border-rose rounded-xl pl-3 pr-2 py-2 flex-shrink-0">
@@ -944,7 +1001,7 @@ export default function Admin() {
                   <form onSubmit={handleSaleSave} className="flex flex-col gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldCustomerName')} *</label>
-                      <input name="customerName" value={saleForm.customerName} onChange={handleSaleFieldChange} required className={inputClass} />
+                      <input name="customerName" value={saleForm.customerName} onChange={handleSaleFieldChange} required title={t('admin.fieldCustomerNameError')} className={inputClass} />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-brown-dark mb-1 uppercase tracking-wide">{t('admin.fieldPhone')}</label>
@@ -1024,7 +1081,7 @@ export default function Admin() {
                       <textarea name="notes" value={saleForm.notes} onChange={handleSaleFieldChange} rows={2} className={`${inputClass} resize-none`} />
                     </div>
                     <div className="flex gap-3 pt-2">
-                      <button type="submit" disabled={saleCart.length === 0} className="btn-primary flex-1 text-center text-sm py-3 disabled:opacity-40 disabled:cursor-not-allowed">{t('admin.addSale')}</button>
+                      <button type="submit" disabled={saleCart.length === 0 || !isValidCustomerName(saleForm.customerName)} className="btn-primary flex-1 text-center text-sm py-3 disabled:opacity-40 disabled:cursor-not-allowed">{t('admin.addSale')}</button>
                       <button type="button" onClick={closeSaleModal} className="btn-secondary flex-1 text-center text-sm py-3">{t('admin.cancel')}</button>
                     </div>
                   </form>
@@ -1044,7 +1101,7 @@ export default function Admin() {
                   const key = sale.orderId || sale.id
                   const isExpanded = expandedOrders.has(key)
                   if (group.length === 1) {
-                    const orderTotal = sale.total + (sale.deliveryFee || 0) + (sale.processingFee || 0)
+                    const orderTotal = sale.total + (sale.deliveryFee || 0) + (sale.tax || 0)
                     return (
                       <div key={sale.id} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
                         {renderOrderSummary(key, { customerName: sale.customerName, date: sale.date, total: orderTotal, status: sale.status })}
@@ -1057,7 +1114,7 @@ export default function Admin() {
                                   <p className="text-xs text-black font-medium">{sale.productName} × {sale.quantity}</p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                                  {sale.phone && <span className="text-xs text-black">{sale.phone}</span>}
+                                  {renderWhatsAppButton(sale.phone, sale.customerName)}
                                   {sale.email && <span className="text-xs text-black">{sale.email}</span>}
                                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
                                     {sale.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
@@ -1078,7 +1135,7 @@ export default function Admin() {
                                 {sale.notes && <p className="text-black text-xs mt-1.5 italic">"{sale.notes}"</p>}
                                 {sale.shippingAddress && <p className="text-black text-xs mt-1">📍 {sale.shippingAddress}</p>}
                                 {!!sale.deliveryFee && <p className="text-black text-xs mt-1">🚚 {t('admin.deliveryFeeLabel')}: ${sale.deliveryFee.toFixed(2)}</p>}
-                                {!!sale.processingFee && <p className="text-black text-xs mt-1">💳 {t('admin.processingFeeLabel')}: ${sale.processingFee.toFixed(2)}</p>}
+                                {!!sale.tax && <p className="text-black text-xs mt-1">🧾 {t('admin.taxLabel')}: ${sale.tax.toFixed(2)}</p>}
                               </div>
                               {renderSaleActions(sale)}
                             </div>
@@ -1087,14 +1144,14 @@ export default function Admin() {
                       </div>
                     )
                   }
-                  const groupTotal = group.reduce((sum, s) => sum + s.total, 0) + (first.deliveryFee || 0) + (first.processingFee || 0)
+                  const groupTotal = group.reduce((sum, s) => sum + s.total, 0) + (first.deliveryFee || 0) + (first.tax || 0)
                   return (
                     <div key={first.orderId} className="bg-cream-light rounded-2xl border border-rose p-5 flex flex-col gap-4 shadow-sm">
                       {renderOrderSummary(key, { customerName: first.customerName, date: first.date, total: groupTotal, status: first.status, itemCount: group.length })}
                       {isExpanded && (
                         <>
                           <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-rose/60">
-                            {first.phone && <span className="text-xs text-black">{first.phone}</span>}
+                            {renderWhatsAppButton(first.phone, first.customerName)}
                             {first.email && <span className="text-xs text-black">{first.email}</span>}
                             <span className="text-xs font-semibold px-2 py-0.5 rounded-full border border-rose text-brown-mid">
                               {first.source === 'web' ? t('admin.originWeb') : t('admin.originManual')}
@@ -1113,7 +1170,7 @@ export default function Admin() {
                             {first.notes && <p className="text-black text-xs italic w-full">"{first.notes}"</p>}
                             {first.shippingAddress && <p className="text-black text-xs w-full">📍 {first.shippingAddress}</p>}
                             {!!first.deliveryFee && <p className="text-black text-xs w-full">🚚 {t('admin.deliveryFeeLabel')}: ${first.deliveryFee.toFixed(2)}</p>}
-                            {!!first.processingFee && <p className="text-black text-xs w-full">💳 {t('admin.processingFeeLabel')}: ${first.processingFee.toFixed(2)}</p>}
+                            {!!first.tax && <p className="text-black text-xs w-full">🧾 {t('admin.taxLabel')}: ${first.tax.toFixed(2)}</p>}
                           </div>
 
                           <div className="flex flex-col gap-3">

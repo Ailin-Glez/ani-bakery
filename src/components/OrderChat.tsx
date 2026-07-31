@@ -285,11 +285,6 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                       <span>
                         <span className="font-semibold">{isEn && p.nameEn ? p.nameEn : p.name}</span>
                         <span className="ml-2 font-normal opacity-70">${p.price}</span>
-                        {p.maxQuantity != null && (
-                          <span className="ml-2 font-normal opacity-70 text-xs">
-                            ({isEn ? 'max' : 'máx.'} {p.maxQuantity})
-                          </span>
-                        )}
                       </span>
                       {inCart
                         ? <span className="text-xs font-bold opacity-90">{inCart.quantity} ✓</span>

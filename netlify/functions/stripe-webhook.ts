@@ -154,7 +154,9 @@ async function handleCheckoutCompleted(stripe: Stripe, session: Stripe.Checkout.
   }
   const lineItems = allLineItems.filter(item => lineItemKind(item) === 'product')
   const deliveryFee = allLineItems.filter(item => lineItemKind(item) === 'shipping').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
-  const tax = allLineItems.filter(item => lineItemKind(item) === 'fee').reduce((sum, item) => sum + (item.amount_total ?? 0), 0) / 100
+  // Tax is now a real Stripe Tax Rate applied per line (not a fake line item), so its
+  // total lives on the session instead of being summed from a "fee"-kind line.
+  const tax = (fullSession.total_details?.amount_tax ?? 0) / 100
   const customerDetails = fullSession.customer_details
   // As of newer Stripe API versions, shipping info moved from the (now-removed)
   // top-level `shipping_details` field to `collected_information.shipping_details`.

@@ -1,7 +1,7 @@
 import type { Handler } from '@netlify/functions'
 import Stripe from 'stripe'
 import { getAdminDb } from './lib/firebaseAdmin'
-import { getDeliveryFee, getTax, isOrderDateValid, BREAD_CATEGORY, MAX_BREAD_PER_ORDER, MAX_BREAD_PER_DAY, COOKIE_CATEGORY, MAX_COOKIES_PER_DAY } from '../../src/config/business'
+import { getDeliveryFee, TAX_PERCENT, isOrderDateValid, BREAD_CATEGORY, MAX_BREAD_PER_ORDER, MAX_BREAD_PER_DAY, COOKIE_CATEGORY, MAX_COOKIES_PER_DAY } from '../../src/config/business'
 
 interface RequestItem {
   productId: string
@@ -24,6 +24,34 @@ let stripeClient: Stripe | undefined
 function getStripe() {
   if (!stripeClient) stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY as string)
   return stripeClient
+}
+
+const TAX_RATE_KEY = 'anis_sales_tax'
+
+// A Stripe Tax Rate (rather than a fake "Tax" line item) is what makes Stripe show the
+// percentage on the checkout page and on the invoice. Reused across sessions instead of
+// creating a new one every time — cached per warm Lambda instance, falling back to a
+// list lookup (by metadata key) so cold starts don't spawn duplicate Tax Rate objects.
+let cachedTaxRateId: string | undefined
+async function getTaxRateId(stripe: Stripe) {
+  if (cachedTaxRateId) return cachedTaxRateId
+  const percentage = TAX_PERCENT * 100
+  const existing = await stripe.taxRates.list({ active: true, limit: 100 })
+  const found = existing.data.find(r => r.metadata?.key === TAX_RATE_KEY && r.percentage === percentage)
+  if (found) {
+    cachedTaxRateId = found.id
+    return found.id
+  }
+  const created = await stripe.taxRates.create({
+    display_name: 'Sales Tax',
+    percentage,
+    inclusive: false,
+    country: 'US',
+    state: 'SC',
+    metadata: { key: TAX_RATE_KEY },
+  })
+  cachedTaxRateId = created.id
+  return created.id
 }
 
 export const handler: Handler = async event => {
@@ -64,6 +92,8 @@ export const handler: Handler = async event => {
 
     const isEn = metadata?.language === 'en'
     const db = getAdminDb()
+    const stripe = getStripe()
+    const taxRateId = await getTaxRateId(stripe)
 
     if (items.some(i => !i.productId)) {
       return { statusCode: 400, body: 'All items must reference a catalog product' }
@@ -81,7 +111,6 @@ export const handler: Handler = async event => {
       return { statusCode: 400, body: 'Invalid order date' }
     }
 
-    let subtotal = 0
     let requestedBreadQuantity = 0
     let requestedCookieQuantity = 0
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = []
@@ -99,7 +128,6 @@ export const handler: Handler = async event => {
       if (product.category === BREAD_CATEGORY) requestedBreadQuantity += quantity
       if (product.category === COOKIE_CATEGORY) requestedCookieQuantity += quantity
       const name = isEn && product.nameEn ? product.nameEn : product.name
-      subtotal += product.price * quantity
       lineItems.push({
         quantity,
         price_data: {
@@ -107,6 +135,7 @@ export const handler: Handler = async event => {
           unit_amount: Math.round(product.price * 100),
           product_data: { name, metadata: { kind: 'product' } },
         },
+        tax_rates: [taxRateId],
       })
     }
 
@@ -171,7 +200,9 @@ export const handler: Handler = async event => {
     const deliveryMethod = metadata?.deliveryMethod === 'delivery' ? 'delivery' : 'pickup'
     const deliveryFee = getDeliveryFee(deliveryMethod)
     if (deliveryFee > 0) {
-      subtotal += deliveryFee
+      // No tax_rates here on purpose: pickup is a real, free alternative and delivery is
+      // itemized as its own line, so under SC rules the delivery fee itself isn't taxable
+      // — only the product subtotal is.
       lineItems.push({
         quantity: 1,
         price_data: {
@@ -182,19 +213,10 @@ export const handler: Handler = async event => {
       })
     }
 
-    const tax = getTax(subtotal)
-    if (tax > 0) {
-      lineItems.push({
-        quantity: 1,
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(tax * 100),
-          product_data: { name: isEn ? 'Tax' : 'Impuestos', metadata: { kind: 'fee' } },
-        },
-      })
-    }
-
-    const session = await getStripe().checkout.sessions.create({
+    // Tax is no longer a fake line item — it's a real Stripe Tax Rate (see getTaxRateId)
+    // attached only to the product lines above, so Stripe computes and displays it (on
+    // just the product subtotal) with its percentage on the checkout page and invoice.
+    const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: lineItems,
       locale: isEn ? 'en' : 'es',

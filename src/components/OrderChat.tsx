@@ -180,8 +180,11 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const deliveryFee = getDeliveryFee(deliveryMethod || 'pickup')
+  // Sales tax applies only to the product subtotal, never to the delivery fee — taxing
+  // a separately-itemized, avoidable (pickup is free) shipping charge would make it
+  // taxable under SC rules even though it's optional.
+  const tax = getTax(cartTotal)
   const orderTotal = cartTotal + deliveryFee
-  const tax = getTax(orderTotal)
   const grandTotal = orderTotal + tax
 
   const today = new Date().toISOString().slice(0, 10)

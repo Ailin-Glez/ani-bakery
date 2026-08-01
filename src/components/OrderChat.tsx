@@ -438,6 +438,12 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                       <span className="text-brown-mid flex-shrink-0">${deliveryFee.toFixed(2)}</span>
                     </div>
                   )}
+                  {orderTotal > 0 && (deliveryFee > 0 || tax > 0) && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-brown-dark">{t('orders.subtotal')}</span>
+                      <span className="text-brown-mid flex-shrink-0">${orderTotal.toFixed(2)}</span>
+                    </div>
+                  )}
                   {tax > 0 && (
                     <div className="flex justify-between gap-2">
                       <span className="text-brown-dark">{t('orders.taxFee', { percent: (TAX_PERCENT * 100).toFixed(0) })}</span>
@@ -446,7 +452,7 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                   )}
                   {grandTotal > 0 && (
                     <div className="flex justify-between gap-2 font-bold text-brown-dark pt-1">
-                      <span>{t('admin.total')}</span>
+                      <span>{t('orders.totalDue')}</span>
                       <span>${grandTotal.toFixed(2)}</span>
                     </div>
                   )}

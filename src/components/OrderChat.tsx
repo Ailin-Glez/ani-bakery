@@ -101,17 +101,18 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   // When the browser's own Back button returns from the Stripe redirect, the page is
   // restored from bfcache instead of reloading — `checkout=cancel` never hits the app,
   // so nothing clears the "Redirecting…" state left over from submitOrder. pageshow with
-  // `persisted: true` is what fires in that case; treat it the same as an explicit cancel.
+  // `persisted: true` is what fires in that case; treat it the same as an explicit cancel:
+  // close the cart (not just stop the spinner) so the same session can't be resubmitted.
   useEffect(() => {
     const handlePageShow = (e: PageTransitionEvent) => {
       if (e.persisted && sending) {
-        setSending(false)
         setSearchParams(prev => { prev.set('checkout', 'cancel'); return prev }, { replace: true })
+        close()
       }
     }
     window.addEventListener('pageshow', handlePageShow)
     return () => window.removeEventListener('pageshow', handlePageShow)
-  }, [sending, setSearchParams])
+  }, [sending, setSearchParams, close])
 
   // The bread cap is shared across every bread item in the cart, so adding one more
   // unit of any bread product is blocked once the combined bread quantity hits the cap.

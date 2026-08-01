@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
@@ -18,6 +18,16 @@ export default function Home() {
 
   const checkoutResult = searchParams.get('checkout')
   const dismissCheckoutBanner = () => setSearchParams(prev => { prev.delete('checkout'); return prev }, { replace: true })
+
+  // The banner renders at the very top of the page, but the user may come back
+  // scrolled halfway down (e.g. they'd scrolled the cart before paying, or the
+  // browser restored their prior scroll position from bfcache) — force them back
+  // to the top so the success/cancel message is actually visible.
+  useEffect(() => {
+    if (checkoutResult === 'success' || checkoutResult === 'cancel') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [checkoutResult])
 
   const openChat = (product?: string) => {
     setSelectedProduct(product)

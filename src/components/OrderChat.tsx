@@ -380,9 +380,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
                     </button>
                   </div>
                   {deliveryMethodError && <p className="text-xs font-semibold text-burgundy mt-1">{t('orders.deliveryMethodError')}</p>}
+                  <p className={`text-xs font-semibold text-burgundy mt-1 ${deliveryMethod === 'delivery' ? 'visible' : 'invisible'}`}>🚚 {t('orders.deliveryScOnlyNote')}</p>
                 </div>
-
-                <p className="text-xs text-brown-mid">{deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}</p>
 
                 <div>
                   <label className="block text-xs font-semibold text-brown-dark mb-1">{t('orders.date')} *</label>
@@ -490,6 +489,8 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
               <ChatBubble delay={200}>
                 {isEn ? 'You\'ll be redirected to a secure payment page 💳' : 'Te voy a redirigir a una página de pago segura 💳'}
+                {' '}
+                {deliveryMethod === 'delivery' ? t('orders.stripeCollectNote') : t('orders.stripeCollectNotePickup')}
               </ChatBubble>
             </>
           )}

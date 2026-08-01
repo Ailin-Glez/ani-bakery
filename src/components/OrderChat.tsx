@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import { X, ShoppingBag, ChevronRight, ChevronLeft, CreditCard, Plus, Minus, Trash2, Loader2, MessageCircle, Calendar } from 'lucide-react'
 import { useProducts } from '../context/ProductContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
@@ -58,6 +59,7 @@ function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?
 
 export default function OrderChat({ open, onClose, initialProduct }: Props) {
   const { t, i18n } = useTranslation()
+  const [, setSearchParams] = useSearchParams()
   const { products } = useProducts()
   const { ranges: outOfOfficeRanges } = useOutOfOffice()
   const [step, setStep] = useState<Step>('product')
@@ -95,6 +97,21 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
 
   const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setDeliveryMethod(''); setDeliveryMethodError(false); setStep('product'); setSending(false); setSendError(false); setCheckoutErrorMessage(''); setDateError(''); setShowCalendar(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
+
+  // When the browser's own Back button returns from the Stripe redirect, the page is
+  // restored from bfcache instead of reloading — `checkout=cancel` never hits the app,
+  // so nothing clears the "Redirecting…" state left over from submitOrder. pageshow with
+  // `persisted: true` is what fires in that case; treat it the same as an explicit cancel.
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted && sending) {
+        setSending(false)
+        setSearchParams(prev => { prev.set('checkout', 'cancel'); return prev }, { replace: true })
+      }
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [sending, setSearchParams])
 
   // The bread cap is shared across every bread item in the cart, so adding one more
   // unit of any bread product is blocked once the combined bread quantity hits the cap.

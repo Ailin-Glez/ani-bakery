@@ -85,8 +85,9 @@ function ProductPickerRow({ product, isEn, cart, onAdd }: {
   const [isPack, setIsPack] = useState(!!cartPack || (hasPack && !cartIndividual))
   const inCart = isPack ? cartPack : cartIndividual
   const price = isPack && hasPack ? product.packPrice! : product.price
-  const baseDisplayName = isEn && product.nameEn ? product.nameEn : product.name
-  const displayName = isPack ? `${baseDisplayName} - ${isEn ? 'Pack of 4' : 'Paquete de 4'}` : baseDisplayName
+  // The size toggle below already says "1 unidad"/"Paquete de 4" — the button itself
+  // just shows the plain product name so the size isn't stated twice.
+  const displayName = isEn && product.nameEn ? product.nameEn : product.name
 
   return (
     <div className={`rounded-2xl border-2 overflow-hidden transition-colors ${inCart ? 'border-wine' : 'border-rose'}`}>

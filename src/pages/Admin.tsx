@@ -298,6 +298,40 @@ export default function Admin() {
     }
   }, [sales])
 
+  // A pack-of-4 line is recorded with its product name suffixed " - Paquete de 4" (see
+  // OrderChat's addToCart) and its `quantity` counts packs, not cookies — one pack sold
+  // is 4 cookies. Strip the suffix to find the category and multiply the count back out,
+  // so "units sold" reflects actual cookies rather than undercounting by 4x.
+  const stripPackSuffix = (name: string) => {
+    if (name.endsWith(' - Paquete de 4')) return name.slice(0, -' - Paquete de 4'.length)
+    if (name.endsWith(' - Pack of 4')) return name.slice(0, -' - Pack of 4'.length)
+    return name
+  }
+  const saleUnitCount = (sale: Sale) =>
+    (sale.productName.endsWith(' - Paquete de 4') || sale.productName.endsWith(' - Pack of 4')) ? sale.quantity * 4 : sale.quantity
+
+  const categorySales = useMemo(() => {
+    const nameToCategory = new Map<string, string>()
+    products.forEach(p => {
+      nameToCategory.set(p.name, p.category)
+      if (p.nameEn) nameToCategory.set(p.nameEn, p.category)
+    })
+    const otherLabel = t('admin.categoryOther')
+    const totals = new Map<string, { revenue: number; quantity: number }>()
+    for (const s of sales) {
+      if (s.status === 'cancelled') continue
+      const category = nameToCategory.get(stripPackSuffix(s.productName)) || otherLabel
+      const entry = totals.get(category) || { revenue: 0, quantity: 0 }
+      entry.revenue += s.total
+      entry.quantity += saleUnitCount(s)
+      totals.set(category, entry)
+    }
+    const categories = Array.from(new Set(products.map(p => p.category))).filter(Boolean)
+    const known = categories.map(category => ({ category, ...(totals.get(category) || { revenue: 0, quantity: 0 }) }))
+    const other = totals.get(otherLabel)
+    return other ? [...known, { category: otherLabel, ...other }] : known
+  }, [sales, products, t])
+
   const statusLabelKey: Record<SaleStatus, string> = {
     pending_confirmation: 'salesStatusPendingConfirmation',
     pending_payment: 'salesStatusPendingPayment',
@@ -933,6 +967,22 @@ export default function Admin() {
                   <p className="text-xs text-brown-mid">{t('admin.salesMonthRevenue')}</p>
                   <p className="text-xl font-bold text-brown-dark">${salesSummary.monthRevenue.toFixed(2)}</p>
                 </div>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-sm font-bold text-brown-dark mb-3">{t('admin.salesByCategory')}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categorySales.map(c => (
+                  <div key={c.category} className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
+                    <div className="border border-rose text-wine rounded-xl p-2.5"><Package size={20} /></div>
+                    <div>
+                      <p className="text-xs text-brown-mid">{c.category}</p>
+                      <p className="text-xl font-bold text-brown-dark">${c.revenue.toFixed(2)}</p>
+                      <p className="text-xs text-brown-mid">{c.quantity} {t('admin.unitsSold')}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 

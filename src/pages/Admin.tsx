@@ -204,9 +204,17 @@ export default function Admin() {
   const closeSaleModal = () => { setAddingSale(false); setSaleForm(EMPTY_SALE); setSaleCart([]); setSaleCustomName('') }
 
   const addSaleCartProduct = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const name = e.target.value
-    if (!name) return
-    const matched = products.find(p => p.name === name)
+    const value = e.target.value
+    if (!value) return
+    // value is "<productId>|individual" or "<productId>|pack" (see the <select> options) —
+    // the pack size is recorded with the same " - Paquete de 4" suffix OrderChat uses, so
+    // it's picked up automatically by the sales-by-category quantity/category logic.
+    const [productId, size] = value.split('|')
+    const matched = products.find(p => p.id === productId)
+    if (!matched) return
+    const isPack = size === 'pack'
+    const name = isPack ? `${matched.name} - Paquete de 4` : matched.name
+    const unitPrice = isPack ? (matched.packPrice ?? matched.price) : matched.price
     setSaleCart(prev => {
       const idx = prev.findIndex(item => item.productName === name)
       if (idx >= 0) {
@@ -214,7 +222,7 @@ export default function Admin() {
         next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 }
         return next
       }
-      return [...prev, { productName: name, quantity: 1, unitPrice: matched?.price ?? 0 }]
+      return [...prev, { productName: name, quantity: 1, unitPrice }]
     })
     e.target.value = ''
   }
@@ -1107,7 +1115,12 @@ export default function Admin() {
                       >
                         <option value="">{t('orders.productPlaceholder')}</option>
                         {products.map(p => (
-                          <option key={p.id} value={p.name}>{p.name} — ${p.price}</option>
+                          <Fragment key={p.id}>
+                            <option value={`${p.id}|individual`}>{p.name} — ${p.price}</option>
+                            {p.packPrice != null && (
+                              <option value={`${p.id}|pack`}>{p.name} — {t('products.packLabel')} — ${p.packPrice}</option>
+                            )}
+                          </Fragment>
                         ))}
                       </select>
                       <div className="flex gap-2 mt-2">

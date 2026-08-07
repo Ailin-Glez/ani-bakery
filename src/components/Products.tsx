@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useProducts } from '../context/ProductContext'
 import ProductCard from './ProductCard'
 
-export default function Products({ onOrderClick }: { onOrderClick: (productName: string) => void }) {
+export default function Products({ onOrderClick }: { onOrderClick: (productName: string, isPack: boolean) => void }) {
   const { t, i18n } = useTranslation()
   const { products } = useProducts()
   const [activeCategory, setActiveCategory] = useState('all')

@@ -5,7 +5,7 @@ import { useProducts } from '../context/ProductContext'
 import { useSales } from '../context/SalesContext'
 import { useOutOfOffice } from '../context/OutOfOfficeContext'
 import { business, buildWhatsAppOrderLink, buildOrderMessage, buildOrderEmailBody, sendOrderEmail, openWhatsAppLink, isOrderDateValid, isValidUSPhone, isValidEmail, formatUSPhoneInput, getBlockedRange } from '../config/business'
-import type { ContactMethod } from '../types'
+import type { ContactMethod, Product } from '../types'
 
 interface CartItem {
   product: string
@@ -31,6 +31,7 @@ interface Props {
   open: boolean
   onClose: () => void
   initialProduct?: string
+  initialIsPack?: boolean
 }
 
 function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -52,7 +53,71 @@ function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?
   )
 }
 
-export default function OrderChat({ open, onClose, initialProduct }: Props) {
+// A row for one product in the "pick a product" step. When it has a pack-of-4 price
+// (packPrice set), the name/price stays the main button and a compact size toggle sits
+// below it. Defaults to whichever size is already in the cart, or to the pack if neither
+// is yet — packs are the more common order for cookies.
+function ProductPickerRow({ product, isEn, cart, onAdd }: {
+  product: Product
+  isEn: boolean
+  cart: CartItem[]
+  onAdd: (p: Product, isPack: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const hasPack = product.packPrice != null
+  const packKey = `${product.name} - Paquete de 4`
+  const cartIndividual = cart.find(item => item.product === product.name)
+  const cartPack = cart.find(item => item.product === packKey)
+  const [isPack, setIsPack] = useState(!!cartPack || (hasPack && !cartIndividual))
+  const inCart = isPack ? cartPack : cartIndividual
+  const price = isPack && hasPack ? product.packPrice! : product.price
+  const baseDisplayName = isEn && product.nameEn ? product.nameEn : product.name
+  const displayName = isPack ? `${baseDisplayName} - ${isEn ? 'Pack of 4' : 'Paquete de 4'}` : baseDisplayName
+
+  return (
+    <div className={`rounded-2xl border-2 overflow-hidden transition-colors ${inCart ? 'border-wine' : 'border-rose'}`}>
+      <button
+        type="button"
+        onClick={() => onAdd(product, isPack)}
+        className={`w-full text-left px-4 py-3 text-sm font-medium flex items-center justify-between gap-2 transition-colors ${
+          inCart ? 'bg-wine text-cream-light' : 'bg-cream-light text-brown-dark hover:border-wine/60 hover:bg-rose/25'
+        }`}
+      >
+        <span>
+          <span className="font-semibold">{displayName}</span>
+          <span className="ml-2 font-normal opacity-70">${price}</span>
+        </span>
+        {inCart
+          ? <span className="text-xs font-bold opacity-90">{inCart.quantity} ✓</span>
+          : <ChevronRight size={16} className="flex-shrink-0 opacity-60" />}
+      </button>
+      {hasPack && (
+        <div className={`flex gap-1.5 px-2.5 py-2 ${inCart ? 'bg-wine-dark/15' : 'bg-rose/15'}`}>
+          <button
+            type="button"
+            onClick={() => setIsPack(false)}
+            className={`text-[11px] font-semibold py-1 px-2.5 rounded-full border transition-colors ${
+              !isPack ? 'border-gold-deep bg-gold-dark text-brown-dark' : 'border-rose bg-cream-light text-brown-mid hover:border-gold-dark hover:text-brown-dark'
+            }`}
+          >
+            {t('products.individualLabel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsPack(true)}
+            className={`text-[11px] font-semibold py-1 px-2.5 rounded-full border transition-colors ${
+              isPack ? 'border-gold-deep bg-gold-dark text-brown-dark' : 'border-rose bg-cream-light text-brown-mid hover:border-gold-dark hover:text-brown-dark'
+            }`}
+          >
+            {t('products.packLabel')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function OrderChat({ open, onClose, initialProduct, initialIsPack }: Props) {
   const { t, i18n } = useTranslation()
   const { products } = useProducts()
   const { addSale } = useSales()
@@ -77,28 +142,40 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
   useEffect(() => {
     if (open && initialProduct) {
       const matched = products.find(p => p.name === initialProduct)
+      const isPack = !!initialIsPack && matched?.packPrice != null
+      const suffix = isPack ? ' - Paquete de 4' : ''
+      const suffixEn = isPack ? ' - Pack of 4' : ''
       setCart([{
-        product: initialProduct,
-        productEn: matched?.nameEn || initialProduct,
+        product: initialProduct + suffix,
+        productEn: (matched?.nameEn || initialProduct) + suffixEn,
         quantity: 1,
-        unitPrice: matched?.price ?? 0,
+        unitPrice: isPack ? (matched?.packPrice ?? 0) : (matched?.price ?? 0),
       }])
       setStep('product')
     }
-  }, [open, initialProduct, products])
+  }, [open, initialProduct, initialIsPack, products])
 
   const reset = () => { setCart([]); setDetails(EMPTY_DETAILS); setContactMethod('phone'); setCustomName(''); setAddingCustom(false); setStep('product'); setSent(false); setSending(false); setSendError(false) }
   const close = () => { onClose(); setTimeout(reset, 400) }
 
-  const addToCart = (p: { name: string; nameEn?: string; price: number }) => {
+  const addToCart = (p: { name: string; nameEn?: string; price: number; packPrice?: number }, isPack: boolean) => {
+    // The pack-of-4 size is stored as a distinct cart line by baking " - Paquete de 4"
+    // into the product name — the same product's two sizes need to be independent
+    // lines, and this keeps that identity working with every existing consumer
+    // (WhatsApp/email message builders, sale records) without changing their shape.
+    const suffix = isPack ? ' - Paquete de 4' : ''
+    const suffixEn = isPack ? ' - Pack of 4' : ''
+    const name = p.name + suffix
+    const nameEn = (p.nameEn || p.name) + suffixEn
+    const price = isPack ? (p.packPrice ?? p.price) : p.price
     setCart(prev => {
-      const idx = prev.findIndex(item => item.product === p.name)
+      const idx = prev.findIndex(item => item.product === name)
       if (idx >= 0) {
         const next = [...prev]
         next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 }
         return next
       }
-      return [...prev, { product: p.name, productEn: p.nameEn || p.name, quantity: 1, unitPrice: p.price }]
+      return [...prev, { product: name, productEn: nameEn, quantity: 1, unitPrice: price }]
     })
   }
 
@@ -280,28 +357,9 @@ export default function OrderChat({ open, onClose, initialProduct }: Props) {
               </ChatBubble>
 
               <div className="flex flex-col gap-2 mt-2">
-                {availableProducts.map(p => {
-                  const inCart = cart.find(item => item.product === p.name)
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => addToCart(p)}
-                      className={`text-left px-4 py-3 rounded-2xl border-2 transition-all text-sm font-medium flex items-center justify-between gap-2 ${
-                        inCart
-                          ? 'border-wine bg-wine text-cream-light'
-                          : 'border-rose bg-cream-light text-brown-dark hover:border-wine/60'
-                      }`}
-                    >
-                      <span>
-                        <span className="font-semibold">{isEn && p.nameEn ? p.nameEn : p.name}</span>
-                        <span className="ml-2 font-normal opacity-70">${p.price}</span>
-                      </span>
-                      {inCart
-                        ? <span className="text-xs font-bold opacity-90">{inCart.quantity} ✓</span>
-                        : <ChevronRight size={16} className="flex-shrink-0 opacity-60" />}
-                    </button>
-                  )
-                })}
+                {availableProducts.map(p => (
+                  <ProductPickerRow key={p.id} product={p} isEn={isEn} cart={cart} onAdd={addToCart} />
+                ))}
 
                 {addingCustom ? (
                   <div className="flex gap-2">

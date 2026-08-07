@@ -1,10 +1,21 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import {
-  collection, getDocs, addDoc, updateDoc, deleteDoc,
+  collection, getDocs, addDoc, updateDoc, deleteDoc, deleteField,
   doc, orderBy, query, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import type { Product } from '../types'
+
+// Firestore rejects `undefined` field values outright (e.g. an unset optional field like
+// packPrice) — it has to either be omitted (create) or explicitly cleared with
+// deleteField() (update), never passed through as `undefined`.
+function stripUndefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>
+}
+
+function toUpdatePayload<T extends object>(obj: T) {
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v === undefined ? deleteField() : v]))
+}
 
 interface ProductContextType {
   products: Product[]
@@ -38,12 +49,12 @@ export function ProductProvider({ children }: { children: ReactNode }) {
   }
 
   const addProduct = async (product: Omit<Product, 'id'>) => {
-    const ref = await addDoc(collection(db, 'products'), { ...product, createdAt: serverTimestamp() })
+    const ref = await addDoc(collection(db, 'products'), { ...stripUndefined(product), createdAt: serverTimestamp() })
     setProducts(prev => [...prev, { ...product, id: ref.id }])
   }
 
   const updateProduct = async (id: string, product: Omit<Product, 'id'>) => {
-    await updateDoc(doc(db, 'products', id), { ...product })
+    await updateDoc(doc(db, 'products', id), toUpdatePayload(product))
     setProducts(prev => prev.map(p => p.id === id ? { ...product, id } : p))
   }
 

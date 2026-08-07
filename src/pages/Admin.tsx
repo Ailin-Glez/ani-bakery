@@ -91,6 +91,8 @@ export default function Admin() {
   const [formData, setFormData] = useState<Omit<Product, 'id'>>(EMPTY_PRODUCT)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingPack, setUploadingPack] = useState(false)
+  const packFileInputRef = useRef<HTMLInputElement>(null)
 
   const [addingSale, setAddingSale] = useState(false)
   const [saleForm, setSaleForm] = useState<SaleFormData>(EMPTY_SALE)
@@ -142,7 +144,7 @@ export default function Admin() {
 
   const openEdit = (product: Product) => {
     setEditing(product)
-    setFormData({ name: product.name, description: product.description, nameEn: product.nameEn ?? '', descriptionEn: product.descriptionEn ?? '', price: product.price, image: product.image, category: product.category, categoryEn: product.categoryEn ?? '', available: product.available })
+    setFormData({ name: product.name, description: product.description, nameEn: product.nameEn ?? '', descriptionEn: product.descriptionEn ?? '', price: product.price, image: product.image, category: product.category, categoryEn: product.categoryEn ?? '', available: product.available, packPrice: product.packPrice, packImage: product.packImage ?? '' })
     setAdding(false)
   }
 
@@ -153,18 +155,20 @@ export default function Admin() {
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target
     if (type === 'checkbox') setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }))
+    else if (name === 'packPrice') setFormData(prev => ({ ...prev, packPrice: value === '' ? undefined : Number(value) }))
     else setFormData(prev => ({ ...prev, [name]: name === 'price' ? Number(value) : value }))
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'image' | 'packImage' = 'image') => {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploading(true)
+    const setBusy = field === 'image' ? setUploading : setUploadingPack
+    setBusy(true)
     try {
       const base64 = await compressImage(file)
-      setFormData(prev => ({ ...prev, image: base64 }))
+      setFormData(prev => ({ ...prev, [field]: base64 }))
     } finally {
-      setUploading(false)
+      setBusy(false)
     }
   }
 
@@ -708,6 +712,77 @@ export default function Admin() {
                       </div>
                     </div>
 
+                    <div className="border border-rose rounded-xl p-4 flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-xs font-semibold text-brown-dark uppercase tracking-wide">{t('admin.fieldPackPrice')}</label>
+                        {formData.packPrice != null && (
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, price: prev.packPrice!, packPrice: prev.price }))}
+                            className="text-xs font-semibold text-wine hover:text-wine-dark"
+                          >
+                            {t('admin.swapPricesBtn')}
+                          </button>
+                        )}
+                      </div>
+                      <div>
+                        <input type="number" name="packPrice" value={formData.packPrice ?? ''} onChange={handleFormChange} min={0} step={0.5} placeholder={t('admin.fieldPackPricePlaceholder')} className={inputClass} />
+                        <p className="text-xs text-brown-light mt-1">{t('admin.fieldPackPriceHint')}</p>
+                      </div>
+                      {formData.packPrice != null && (
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <label className="block text-xs font-semibold text-brown-dark uppercase tracking-wide">{t('admin.fieldPackImage')}</label>
+                            {formData.image && formData.packImage && (
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, image: prev.packImage!, packImage: prev.image }))}
+                                className="text-xs font-semibold text-wine hover:text-wine-dark"
+                              >
+                                {t('admin.swapImagesBtn')}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex gap-3 items-start">
+                            {formData.packImage ? (
+                              <div className="relative flex-shrink-0">
+                                <img src={formData.packImage} alt="preview" className="h-20 w-20 object-cover rounded-xl border border-rose" />
+                                <button
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, packImage: '' }))}
+                                  className="absolute -top-2 -right-2 bg-wine text-white rounded-full p-0.5"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => packFileInputRef.current?.click()}
+                                disabled={uploadingPack}
+                                className="h-20 w-20 flex-shrink-0 border-2 border-dashed border-rose rounded-xl flex flex-col items-center justify-center gap-1 text-brown-light hover:border-wine hover:text-wine transition-colors disabled:opacity-50"
+                              >
+                                {uploadingPack ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
+                                <span className="text-xs">{uploadingPack ? '...' : t('admin.fieldImageUpload')}</span>
+                              </button>
+                            )}
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                name="packImage"
+                                value={formData.packImage ?? ''}
+                                onChange={handleFormChange}
+                                placeholder={t('admin.fieldImagePlaceholder')}
+                                className={inputClass}
+                              />
+                              <p className="text-xs text-brown-light mt-1.5">{t('admin.fieldPackImageHint')}</p>
+                            </div>
+                          </div>
+                          <input ref={packFileInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, 'packImage')} />
+                        </div>
+                      )}
+                    </div>
+
                     {/* Image upload */}
                     <div>
                       <label className="block text-xs font-semibold text-brown-dark mb-2 uppercase tracking-wide">{t('admin.fieldImage')}</label>
@@ -801,9 +876,16 @@ export default function Admin() {
                         <span className="text-lg font-bold text-wine flex-shrink-0">${product.price}</span>
                       </div>
                       <p className="text-brown-mid text-xs mt-1 line-clamp-2">{product.description}</p>
-                      <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full ${product.available ? 'bg-green-100 text-green-700' : 'bg-rose-light text-wine'}`}>
-                        {product.available ? t('admin.available') : t('admin.unavailable')}
-                      </span>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${product.available ? 'bg-green-100 text-green-700' : 'bg-rose-light text-wine'}`}>
+                          {product.available ? t('admin.available') : t('admin.unavailable')}
+                        </span>
+                        {product.packPrice != null && (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-gold-dark text-brown-dark">
+                            {t('admin.packBadge', { price: product.packPrice })}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-col gap-2 flex-shrink-0">
                       <button onClick={() => openEdit(product)} className="flex items-center gap-1.5 text-sm text-brown-mid hover:text-wine transition-colors bg-beige-light hover:bg-rose-light px-3 py-2 rounded-xl">

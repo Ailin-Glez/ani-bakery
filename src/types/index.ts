@@ -9,6 +9,11 @@ export interface Product {
   category: string
   categoryEn?: string
   available: boolean
+  // A pack-of-4 price/photo for the same flavor — when set, the storefront offers a size
+  // toggle instead of duplicating this product into a second listing. Everything else
+  // (name, description, category, availability) is shared between both sizes.
+  packPrice?: number
+  packImage?: string
 }
 
 export interface Review {

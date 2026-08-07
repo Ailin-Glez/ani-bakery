@@ -40,11 +40,20 @@ describe('ProductCard', () => {
     await i18n.changeLanguage('es')
   })
 
-  it('calls onOrderClick with the product name when ordering an available product', () => {
+  it('calls onOrderClick with the product name and isPack=false when ordering an available product with no pack option', () => {
     const onOrderClick = vi.fn()
     render(<ProductCard product={baseProduct} onOrderClick={onOrderClick} />)
     fireEvent.click(screen.getByRole('button', { name: /encargar/i }))
-    expect(onOrderClick).toHaveBeenCalledWith('Pan Artesanal')
+    expect(onOrderClick).toHaveBeenCalledWith('Pan Artesanal', false)
+  })
+
+  it('shows a size toggle defaulted to the pack when packPrice is set, and calls onOrderClick with isPack=true', () => {
+    const onOrderClick = vi.fn()
+    const packProduct = { ...baseProduct, packPrice: 28 }
+    render(<ProductCard product={packProduct} onOrderClick={onOrderClick} />)
+    expect(screen.getByText('$28')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /encargar/i }))
+    expect(onOrderClick).toHaveBeenCalledWith('Pan Artesanal', true)
   })
 
   it('shows an unavailable badge and no order button when the product is unavailable', () => {

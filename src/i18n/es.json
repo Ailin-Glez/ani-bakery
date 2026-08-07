@@ -26,7 +26,9 @@
     "orderBtn": "Encargar",
     "zoomAlt": "Ver imagen ampliada",
     "closeAlt": "Cerrar",
-    "unavailable": "No disponible"
+    "unavailable": "No disponible",
+    "individualLabel": "1 unidad",
+    "packLabel": "Paquete de 4"
   },
   "orders": {
     "title": "Hacer un Encargo",
@@ -141,6 +143,14 @@
     "fieldTranslationHint": "Opcional — se muestra cuando el sitio está en inglés",
     "fieldImage": "URL de imagen",
     "fieldImagePlaceholder": "/bread.jpeg o URL externa",
+    "fieldPackPrice": "Precio del paquete de 4",
+    "fieldPackPricePlaceholder": "Sin paquete de 4",
+    "fieldPackPriceHint": "Opcional — si lo completas, en la tienda va a aparecer un selector \"1 unidad / Paquete de 4\" para este producto.",
+    "fieldPackImage": "Foto del paquete de 4",
+    "fieldPackImageHint": "Opcional — si no subes una foto distinta, se usa la foto principal del producto también para el paquete.",
+    "swapImagesBtn": "🔄 Intercambiar fotos",
+    "swapPricesBtn": "🔄 Intercambiar precios",
+    "packBadge": "Paquete de 4: ${{price}}",
     "noProducts": "No hay productos todavía.",
     "addFirst": "Agregar el primero",
     "approve": "Aprobar",

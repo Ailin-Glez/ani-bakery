@@ -26,7 +26,9 @@
     "orderBtn": "Order",
     "zoomAlt": "View larger image",
     "closeAlt": "Close",
-    "unavailable": "Unavailable"
+    "unavailable": "Unavailable",
+    "individualLabel": "1 unit",
+    "packLabel": "Pack of 4"
   },
   "orders": {
     "title": "Place an Order",
@@ -141,6 +143,14 @@
     "fieldTranslationHint": "Optional — shown when the site is in English",
     "fieldImage": "Image URL",
     "fieldImagePlaceholder": "/bread.jpeg or external URL",
+    "fieldPackPrice": "Pack of 4 price",
+    "fieldPackPricePlaceholder": "No pack of 4",
+    "fieldPackPriceHint": "Optional — if set, the storefront shows a \"1 unit / Pack of 4\" toggle for this product.",
+    "fieldPackImage": "Pack of 4 photo",
+    "fieldPackImageHint": "Optional — if you don't upload a different photo, the product's main photo is used for the pack too.",
+    "swapImagesBtn": "🔄 Swap photos",
+    "swapPricesBtn": "🔄 Swap prices",
+    "packBadge": "Pack of 4: ${{price}}",
     "noProducts": "No products yet.",
     "addFirst": "Add the first one",
     "approve": "Approve",

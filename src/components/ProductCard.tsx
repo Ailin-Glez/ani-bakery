@@ -6,11 +6,11 @@ import type { Product } from '../types'
 
 interface Props {
   product: Product
-  onOrderClick: (productName: string) => void
+  onOrderClick: (productName: string, isPack: boolean) => void
 }
 
-function ProductLightbox({ product, name, onClose }: {
-  product: Product
+function ProductLightbox({ image, name, onClose }: {
+  image: string
   name: string
   onClose: () => void
 }) {
@@ -22,7 +22,7 @@ function ProductLightbox({ product, name, onClose }: {
     >
       <div className="relative inline-block" onClick={e => e.stopPropagation()}>
         <img
-          src={product.image || '/bread.webp'}
+          src={image || '/bread.webp'}
           alt={name}
           onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="block max-w-[90vw] max-h-[85vh] object-contain rounded-2xl shadow-2xl"
@@ -39,15 +39,20 @@ function ProductLightbox({ product, name, onClose }: {
 export default function ProductCard({ product, onOrderClick }: Props) {
   const { t, i18n } = useTranslation()
   const [zoomed, setZoomed] = useState(false)
+  const hasPack = product.packPrice != null
+  // Packs are the more common order for cookies, so default to that when available.
+  const [isPack, setIsPack] = useState(hasPack)
   const isEn = i18n.language === 'en'
   const name = (isEn && product.nameEn) ? product.nameEn : product.name
   const description = (isEn && product.descriptionEn) ? product.descriptionEn : product.description
   const category = (isEn && product.categoryEn) ? product.categoryEn : product.category
+  const price = isPack && hasPack ? product.packPrice! : product.price
+  const image = (isPack && product.packImage) ? product.packImage : product.image
 
   return (
     <div className="group bg-cream-light rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col border border-rose/50 hover:-translate-y-1">
       {zoomed && (
-        <ProductLightbox product={product} name={name} onClose={() => setZoomed(false)} />
+        <ProductLightbox image={image} name={name} onClose={() => setZoomed(false)} />
       )}
       <button
         type="button"
@@ -56,14 +61,14 @@ export default function ProductCard({ product, onOrderClick }: Props) {
         className="relative overflow-hidden aspect-[5/4] bg-brown-dark/5 cursor-zoom-in"
       >
         <img
-          src={product.image || '/bread.webp'}
+          src={image || '/bread.webp'}
           alt=""
           aria-hidden="true"
           onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-40"
         />
         <img
-          src={product.image || '/bread.webp'}
+          src={image || '/bread.webp'}
           alt={name}
           onError={e => { (e.currentTarget as HTMLImageElement).src = '/bread.webp' }}
           className="relative w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 ease-out"
@@ -83,11 +88,34 @@ export default function ProductCard({ product, onOrderClick }: Props) {
         <h3 className="font-display text-lg text-brown-dark leading-tight line-clamp-2 min-h-[2.8rem]">{name}</h3>
         <p className="text-brown-mid text-xs leading-relaxed line-clamp-3 min-h-[3.75rem]">{description}</p>
 
+        {hasPack && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={() => setIsPack(false)}
+              className={`text-[11px] font-semibold py-1 px-2.5 rounded-full border transition-colors ${
+                !isPack ? 'border-gold-deep bg-gold-dark text-brown-dark' : 'border-rose text-brown-mid hover:border-gold-dark hover:text-brown-dark'
+              }`}
+            >
+              {t('products.individualLabel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPack(true)}
+              className={`text-[11px] font-semibold py-1 px-2.5 rounded-full border transition-colors ${
+                isPack ? 'border-gold-deep bg-gold-dark text-brown-dark' : 'border-rose text-brown-mid hover:border-gold-dark hover:text-brown-dark'
+              }`}
+            >
+              {t('products.packLabel')}
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mt-auto pt-3 border-t border-rose/60">
-          <span className="font-display text-lg text-wine">${product.price}</span>
+          <span className="font-display text-lg text-wine">${price}</span>
           {product.available ? (
             <button
-              onClick={() => onOrderClick(product.name)}
+              onClick={() => onOrderClick(product.name, isPack)}
               className="btn-primary btn-burgundy text-xs py-1.5 px-3"
             >
               {t('products.orderBtn')}

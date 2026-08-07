@@ -14,6 +14,20 @@ interface CartItem {
   unitPrice: number
 }
 
+const PACK_SUFFIX_ES = ' - Paquete de 4'
+const PACK_SUFFIX_EN = ' - Pack of 4'
+
+// The pack size is baked into item.product/productEn as a suffix (see addToCart) rather
+// than stored as its own field — this pulls it back apart so the cart can show the plain
+// product name and the size as a separate, always-visible line instead of relying on the
+// suffix surviving inside a truncated single line.
+function splitCartItemName(item: CartItem) {
+  const isPack = item.product.endsWith(PACK_SUFFIX_ES)
+  const baseName = isPack ? item.product.slice(0, -PACK_SUFFIX_ES.length) : item.product
+  const baseNameEn = item.productEn.endsWith(PACK_SUFFIX_EN) ? item.productEn.slice(0, -PACK_SUFFIX_EN.length) : item.productEn
+  return { isPack, baseName, baseNameEn }
+}
+
 interface DetailsForm {
   name: string
   phone: string
@@ -391,9 +405,19 @@ export default function OrderChat({ open, onClose, initialProduct, initialIsPack
                     <ShoppingBag size={15} />
                     <p className="text-xs font-bold uppercase tracking-wide">{t('orders.yourOrder')}</p>
                   </div>
-                  {cart.map(item => (
+                  {cart.map(item => {
+                    const { isPack, baseName, baseNameEn } = splitCartItemName(item)
+                    const hasPack = products.find(p => p.name === baseName)?.packPrice != null
+                    return (
                     <div key={item.product} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="flex-1 truncate font-semibold">{isEn ? item.productEn : item.product}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate font-semibold">{isEn ? baseNameEn : baseName}</span>
+                        {hasPack && (
+                          <span className="block truncate text-[11px] font-normal opacity-70">
+                            {isPack ? t('products.packLabel') : t('products.individualLabel')}
+                          </span>
+                        )}
+                      </span>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button onClick={() => changeQuantity(item.product, -1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-brown-dark/10 hover:bg-brown-dark/20">
                           <Minus size={12} />
@@ -407,7 +431,8 @@ export default function OrderChat({ open, onClose, initialProduct, initialIsPack
                         </button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </>
@@ -488,12 +513,23 @@ export default function OrderChat({ open, onClose, initialProduct, initialIsPack
 
               <div className="bg-cream-light rounded-2xl p-4 shadow-sm text-sm flex flex-col gap-2">
                 <div className="flex flex-col gap-1.5 pb-2 border-b border-rose">
-                  {cart.map(item => (
+                  {cart.map(item => {
+                    const { isPack, baseName, baseNameEn } = splitCartItemName(item)
+                    const hasPack = products.find(p => p.name === baseName)?.packPrice != null
+                    return (
                     <div key={item.product} className="flex justify-between gap-2">
-                      <span className="text-brown-dark">{(isEn ? item.productEn : item.product)} × {item.quantity}</span>
+                      <span className="text-brown-dark">
+                        {(isEn ? baseNameEn : baseName)} × {item.quantity}
+                        {hasPack && (
+                          <span className="block text-[11px] text-brown-mid font-normal">
+                            {isPack ? t('products.packLabel') : t('products.individualLabel')}
+                          </span>
+                        )}
+                      </span>
                       {item.unitPrice > 0 && <span className="text-brown-mid flex-shrink-0">${(item.unitPrice * item.quantity).toFixed(2)}</span>}
                     </div>
-                  ))}
+                    )
+                  })}
                   {cartTotal > 0 && (
                     <div className="flex justify-between gap-2 font-bold text-brown-dark pt-1">
                       <span>{t('admin.total')}</span>

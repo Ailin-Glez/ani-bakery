@@ -316,20 +316,40 @@ export default function Admin() {
       nameToCategory.set(p.name, p.category)
       if (p.nameEn) nameToCategory.set(p.nameEn, p.category)
     })
+    const categories = Array.from(new Set(products.map(p => p.category))).filter(Boolean)
+    // Manual sales (added by hand in Admin, not tied to a catalog product) sometimes just
+    // say "Galletas - Paquete de 4" instead of naming a specific flavor — there's no exact
+    // product to match, so fall back to checking whether the name mentions a category at
+    // all (e.g. "Galletas" inside "Galletas - Paquete de 4" matches category "Galletas").
+    // Trailing-"s" tolerant so "Galleta (1)" still matches category "Galletas".
+    const stem = (s: string) => s.toLowerCase().replace(/s$/, '')
+    const resolveCategory = (baseName: string) => {
+      const exact = nameToCategory.get(baseName)
+      if (exact) return exact
+      const lower = baseName.toLowerCase()
+      return categories.find(cat => lower.includes(stem(cat)))
+    }
     const otherLabel = t('admin.categoryOther')
     const totals = new Map<string, { revenue: number; quantity: number }>()
+    // TEMP diagnostic: which exact sale.productName values still aren't matching any
+    // category (exact or fuzzy) — helps spot anything left dumping into "Otros".
+    const unmatchedNames = new Map<string, number>()
     for (const s of sales) {
       if (s.status === 'cancelled') continue
-      const category = nameToCategory.get(stripPackSuffix(s.productName)) || otherLabel
+      const baseName = stripPackSuffix(s.productName)
+      const category = resolveCategory(baseName) || otherLabel
+      if (category === otherLabel) unmatchedNames.set(s.productName, (unmatchedNames.get(s.productName) || 0) + saleUnitCount(s))
       const entry = totals.get(category) || { revenue: 0, quantity: 0 }
       entry.revenue += s.total
       entry.quantity += saleUnitCount(s)
       totals.set(category, entry)
     }
-    const categories = Array.from(new Set(products.map(p => p.category))).filter(Boolean)
     const known = categories.map(category => ({ category, ...(totals.get(category) || { revenue: 0, quantity: 0 }) }))
     const other = totals.get(otherLabel)
-    return other ? [...known, { category: otherLabel, ...other }] : known
+    return {
+      cards: other ? [...known, { category: otherLabel, ...other }] : known,
+      unmatchedNames: Array.from(unmatchedNames.entries()).sort((a, b) => b[1] - a[1]),
+    }
   }, [sales, products, t])
 
   const statusLabelKey: Record<SaleStatus, string> = {
@@ -973,7 +993,7 @@ export default function Admin() {
             <div className="mb-8">
               <h3 className="text-sm font-bold text-brown-dark mb-3">{t('admin.salesByCategory')}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categorySales.map(c => (
+                {categorySales.cards.map(c => (
                   <div key={c.category} className="bg-cream-light rounded-2xl border border-rose p-5 flex items-center gap-3">
                     <div className="border border-rose text-wine rounded-xl p-2.5"><Package size={20} /></div>
                     <div>
@@ -984,6 +1004,16 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
+              {categorySales.unmatchedNames.length > 0 && (
+                <div className="mt-3 bg-rose-light/60 border border-rose rounded-xl p-3">
+                  <p className="text-xs font-bold text-brown-dark mb-1">⚠️ Nombres de producto en ventas que no matchean ningún producto actual (por eso caen en "Otros"):</p>
+                  <ul className="text-xs text-brown-mid list-disc list-inside">
+                    {categorySales.unmatchedNames.map(([name, qty]) => (
+                      <li key={name}>"{name}" — {qty} unidades</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">

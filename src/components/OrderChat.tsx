@@ -67,10 +67,10 @@ function ChatBubble({ children, delay = 0 }: { children: React.ReactNode; delay?
   )
 }
 
-// A row for one product in the "pick a product" step. When it has a pack-of-4 price
-// (packPrice set), the name/price stays the main button and a compact size toggle sits
-// below it. Defaults to whichever size is already in the cart, or to the pack if neither
-// is yet — packs are the more common order for cookies.
+// A row for one product in the "pick a product" step. Products with no pack option are a
+// single button, same as always. Products with a pack-of-4 price show two direct buttons
+// side by side — tapping either one adds that size right away, no separate "pick a size,
+// then tap elsewhere to add" two-step interaction to figure out.
 function ProductPickerRow({ product, isEn, cart, onAdd }: {
   product: Product
   isEn: boolean
@@ -82,52 +82,53 @@ function ProductPickerRow({ product, isEn, cart, onAdd }: {
   const packKey = `${product.name} - Paquete de 4`
   const cartIndividual = cart.find(item => item.product === product.name)
   const cartPack = cart.find(item => item.product === packKey)
-  const [isPack, setIsPack] = useState(!!cartPack || (hasPack && !cartIndividual))
-  const inCart = isPack ? cartPack : cartIndividual
-  const price = isPack && hasPack ? product.packPrice! : product.price
-  // The size toggle below already says "1 unidad"/"Paquete de 4" — the button itself
-  // just shows the plain product name so the size isn't stated twice.
   const displayName = isEn && product.nameEn ? product.nameEn : product.name
 
-  return (
-    <div className={`rounded-2xl border-2 overflow-hidden transition-colors ${inCart ? 'border-wine' : 'border-rose'}`}>
+  if (!hasPack) {
+    return (
       <button
         type="button"
-        onClick={() => onAdd(product, isPack)}
-        className={`w-full text-left px-4 py-3 text-sm font-medium flex items-center justify-between gap-2 transition-colors ${
-          inCart ? 'bg-wine text-cream-light' : 'bg-cream-light text-brown-dark hover:border-wine/60 hover:bg-rose/25'
+        onClick={() => onAdd(product, false)}
+        className={`text-left px-4 py-3 rounded-2xl border-2 text-sm font-medium flex items-center justify-between gap-2 transition-colors ${
+          cartIndividual ? 'border-wine bg-wine text-cream-light' : 'border-rose bg-cream-light text-brown-dark hover:border-wine/60'
         }`}
       >
         <span>
           <span className="font-semibold">{displayName}</span>
-          <span className="ml-2 font-normal opacity-70">${price}</span>
+          <span className="ml-2 font-normal opacity-70">${product.price}</span>
         </span>
-        {inCart
-          ? <span className="text-xs font-bold opacity-90">{inCart.quantity} ✓</span>
+        {cartIndividual
+          ? <span className="text-xs font-bold opacity-90">{cartIndividual.quantity} ✓</span>
           : <ChevronRight size={16} className="flex-shrink-0 opacity-60" />}
       </button>
-      {hasPack && (
-        <div className={`flex gap-1.5 px-2.5 py-2 ${inCart ? 'bg-wine-dark/15' : 'bg-rose/15'}`}>
-          <button
-            type="button"
-            onClick={() => setIsPack(false)}
-            className={`text-[11px] font-semibold py-1 px-2.5 rounded-full border transition-colors ${
-              !isPack ? 'border-gold-deep bg-gold-dark text-brown-dark' : 'border-rose bg-cream-light text-brown-mid hover:border-gold-dark hover:text-brown-dark'
-            }`}
-          >
-            {t('products.individualLabel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsPack(true)}
-            className={`text-[11px] font-semibold py-1 px-2.5 rounded-full border transition-colors ${
-              isPack ? 'border-gold-deep bg-gold-dark text-brown-dark' : 'border-rose bg-cream-light text-brown-mid hover:border-gold-dark hover:text-brown-dark'
-            }`}
-          >
-            {t('products.packLabel')}
-          </button>
-        </div>
-      )}
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-rose overflow-hidden">
+      <p className="px-4 pt-2.5 pb-1 text-sm font-semibold text-brown-dark bg-cream-light">{displayName}</p>
+      <div className="flex gap-1.5 px-2.5 pb-2.5 pt-1 bg-cream-light">
+        <button
+          type="button"
+          onClick={() => onAdd(product, false)}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
+            cartIndividual ? 'border-wine bg-wine text-cream-light' : 'border-rose text-brown-mid hover:border-wine/60'
+          }`}
+        >
+          <span>{t('products.individualLabel')}</span>
+          <span className="font-normal opacity-80">${product.price}{cartIndividual ? ` · ${cartIndividual.quantity} ✓` : ''}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onAdd(product, true)}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
+            cartPack ? 'border-wine bg-wine text-cream-light' : 'border-rose text-brown-mid hover:border-wine/60'
+          }`}
+        >
+          <span>{t('products.packLabel')}</span>
+          <span className="font-normal opacity-80">${product.packPrice}{cartPack ? ` · ${cartPack.quantity} ✓` : ''}</span>
+        </button>
+      </div>
     </div>
   )
 }
